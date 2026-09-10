@@ -1,6 +1,6 @@
 /**
  * @file oled.c
- * @brief 波特律动OLED驱动(SSD1306) - I2C3版本
+ * @brief 波特律动OLED驱动(SSD1306) - I2C1版本
  * @anchor 波特律动(keysking 博哥在学习)
  * @version 1.0
  * @date 2023-08-19
@@ -41,11 +41,11 @@ uint8_t OLED_GRAM[OLED_PAGE][OLED_COLUMN];
  * @param len 要发送的数据长度
  * @return None
  * @note 此函数是移植本驱动时的重要函数 将本驱动库移植到其他平台时应根据实际情况修改此函数
- * @note 使用I2C3 (PA8=SCL, PC9=SDA)
+ * @note 使用I2C1 (PB6=SCL, PB7=SDA)
  */
 void OLED_Send(uint8_t *data, uint8_t len)
 {
-  HAL_I2C_Master_Transmit(&hi2c3, OLED_ADDRESS, data, len, HAL_MAX_DELAY);
+  HAL_I2C_Master_Transmit(&hi2c1, OLED_ADDRESS, data, len, HAL_MAX_DELAY);
 }
 
 /**

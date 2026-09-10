@@ -50,6 +50,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/font.c
     Core/Src/AS5600.c
     Core/Src/uart_comm.c
+    Core/Src/encoder.c
+    Core/Src/PID.c
+    Core/Src/LPF.c
 )
 
 # Add include paths
