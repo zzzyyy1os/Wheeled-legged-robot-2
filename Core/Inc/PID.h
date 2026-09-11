@@ -39,4 +39,12 @@ void PID_Init(PID_HandleTypeDef *hpid, float P, float I, float D, float ramp, fl
   */
 float PID_Update(PID_HandleTypeDef *hpid, float error);
 
+/**
+  * @brief  PID计算 (V3P风格, 简洁版)
+  * @param  Kp/Ki/Kd  PID参数
+  * @param  Error      误差值
+  * @retval PID输出
+  */
+float PID_Controller(float Kp, float Ki, float Kd, float Error);
+
 #endif /* __PID_H__ */

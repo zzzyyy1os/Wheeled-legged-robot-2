@@ -1,73 +1,65 @@
 /**
   * @file    PID.c
-  * @brief   PID 控制器 (移植自 DengFOC, 适配 STM32 HAL)
+  * @brief   PID控制器 (V3P风格, 适配F407)
   */
 #include "PID.h"
 
-void PID_Init(PID_HandleTypeDef *hpid, float P, float I, float D, float ramp, float limit)
-{
-    hpid->P = P;
-    hpid->I = I;
-    hpid->D = D;
-    hpid->output_ramp = ramp;
-    hpid->limit = limit;
+#define LIMIT  6.3f
 
-    hpid->error_prev = 0.0f;
-    hpid->output_prev = 0.0f;
-    hpid->integral_prev = 0.0f;
-    hpid->timestamp_prev = HAL_GetTick();
+static float _constrain(float amt, float low, float high)
+{
+    return ((amt < low) ? low : ((amt > high) ? high : amt));
 }
 
+/* 全局状态 */
+static uint32_t Timestamp_Last = 0;
+static float Last_Error = 0.0f;
+static float Last_intergration = 0.0f;
+static uint8_t pid_initialized = 0;
+
+void PID_Init(PID_HandleTypeDef *hpid, float P, float I, float D, float ramp, float limit)
+{
+    (void)hpid; (void)P; (void)I; (void)D; (void)ramp; (void)limit;
+    Timestamp_Last = HAL_GetTick();
+    Last_Error = 0.0f;
+    Last_intergration = 0.0f;
+    pid_initialized = 1;
+}
+
+float PID_Controller(float Kp, float Ki, float Kd, float Error)
+{
+    /* 首次调用, 初始化时间戳 */
+    if (!pid_initialized)
+    {
+        Timestamp_Last = HAL_GetTick();
+        pid_initialized = 1;
+    }
+
+    uint32_t now = HAL_GetTick();
+    float Ts = (now - Timestamp_Last) * 1e-3f;  /* ms → s */
+    Timestamp_Last = now;
+
+    if (Ts <= 0 || Ts > 0.05f) Ts = 0.001f;
+
+    float proportion = Kp * Error;
+
+    float intergration = Last_intergration + Ki * 0.5f * Ts * Error;
+    intergration = _constrain(intergration, -LIMIT, LIMIT);
+
+    float differential = Kd * (Error - Last_Error) / Ts;
+
+    float Output = proportion + intergration + differential;
+    Output = _constrain(Output, -LIMIT, LIMIT);
+
+    Last_Error = Error;
+    Last_intergration = intergration;
+
+    return Output;
+}
+
+/* 保留旧接口兼容 */
 float PID_Update(PID_HandleTypeDef *hpid, float error)
 {
-    uint32_t timestamp_now = HAL_GetTick();
-    float Ts = (timestamp_now - hpid->timestamp_prev) * 1e-3f;
-
-    /* 时间异常处理 */
-    if (Ts <= 0.0f || Ts > 0.5f)
-    {
-        Ts = 1e-3f;
-    }
-
-    hpid->timestamp_prev = timestamp_now;
-
-    /* P 项 */
-    float proportional = hpid->P * error;
-
-    /* I 项 (梯形积分) */
-    hpid->integral_prev += hpid->I * Ts * 0.5f * (error + hpid->error_prev);
-
-    /* 积分限幅 */
-    if (hpid->integral_prev > hpid->limit)
-        hpid->integral_prev = hpid->limit;
-    else if (hpid->integral_prev < -hpid->limit)
-        hpid->integral_prev = -hpid->limit;
-
-    /* D 项 (一阶差分) */
-    float derivative = hpid->D * (error - hpid->error_prev) / Ts;
-
-    /* 计算输出 */
-    float output = proportional + hpid->integral_prev + derivative;
-
-    /* 输出限幅 */
-    if (output > hpid->limit)
-        output = hpid->limit;
-    else if (output < -hpid->limit)
-        output = -hpid->limit;
-
-    /* 输出变化率限幅 (ramp) */
-    if (hpid->output_ramp > 0.0f)
-    {
-        float delta = output - hpid->output_prev;
-        if (delta > hpid->output_ramp * Ts)
-            output = hpid->output_prev + hpid->output_ramp * Ts;
-        else if (delta < -hpid->output_ramp * Ts)
-            output = hpid->output_prev - hpid->output_ramp * Ts;
-    }
-
-    /* 保存状态 */
-    hpid->error_prev = error;
-    hpid->output_prev = output;
-
-    return output;
+    (void)hpid;
+    return PID_Controller(0, 0, 0, error);
 }

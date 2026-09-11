@@ -1,3 +1,8 @@
+/**
+  * @file    DengFOC.h
+  * @brief   FOC控制库 (V3P风格精简版)
+  *          支持: 开环速度/闭环速度/闭环位置
+  */
 #ifndef __DENGFOC_H__
 #define __DENGFOC_H__
 
@@ -5,7 +10,7 @@
 #include <math.h>
 
 #ifndef PI
-#define PI M_PI
+#define PI 3.14159265359f
 #endif
 
 #define _3PI_2 4.71238898038f
@@ -15,7 +20,6 @@
 #define MOTOR_DIR  (1)   /* 传感器方向, 1或-1 */
 
 /* 基础FOC函数 */
-float _electricalAngle(float shaft_angle, int pole_pairs);
 float _normalizeAngle(float angle);
 void setPwm(float Ua, float Ub, float Uc);
 void setPhaseVoltage(float Uq, float Ud, float angle_el);
@@ -29,35 +33,28 @@ void alignSensor(void);
 /* 开环速度控制 */
 float velocityOpenloop(float target_velocity);
 
-/* 开环角度控制 (新增) */
-float angleOpenloop(float target_angle, float vl);
-
-/* 闭环速度控制 (PID + LPF, 移植自DengFOC) */
+/* 闭环速度控制 (V3P风格) */
 void  velocityClosedloop_Init(void);
 float velocityClosedloop(float target_velocity);
 
-/* 闭环位置控制 (PID + LPF, 移植自DengFOC) */
+/* 闭环位置控制 (V3P风格, 单环) */
 void  positionClosedloop_Init(void);
 float positionClosedloop(float target_angle_rad);
 
-/* 速度环参数 */
+/* 速度环参数 (可调) */
 extern float vel_Kp;
 extern float vel_Ki;
 extern float vel_Kd;
-extern float vel_Uq_max;
-extern float vel_integral_max;
 extern float vel_actual_speed;
 extern float vel_LPF_Tf;
 
-/* 位置环参数 */
+/* 位置环参数 (可调) */
 extern float pos_Kp;
 extern float pos_Ki;
 extern float pos_Kd;
-extern float pos_Uq_max;
 extern float pos_actual_angle;
-extern float pos_LPF_Tf;
 
 /* 零电角度偏移 (校准后自动设置) */
 extern float zero_electric_angle;
 
-#endif
+#endif /* __DENGFOC_H__ */

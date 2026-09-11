@@ -28,4 +28,12 @@ void LPF_Init(LPF_HandleTypeDef *hlpf, float Tf);
   */
 float LPF_Update(LPF_HandleTypeDef *hlpf, float x);
 
+/**
+  * @brief  低通滤波器 (V3P风格, 简洁版)
+  * @param  Tf   时间常数 (秒)
+  * @param  x    输入信号
+  * @retval 滤波后的输出
+  */
+float Lowpassfilter(float Tf, float x);
+
 #endif /* __LPF_H__ */

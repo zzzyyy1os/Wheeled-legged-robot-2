@@ -213,3 +213,55 @@ uint8_t AS5600_Read(void)
     as5600_ready = 1;
     return 1;
 }
+
+/* ======================== V3P风格接口 ======================== */
+
+/**
+  * @brief  获取多圈角度 (兼容V3P GetAngle)
+  */
+float GetAngle(void)
+{
+    return (float)as5600_angle;
+}
+
+/**
+  * @brief  获取单圈角度 (兼容V3P GetAngle_NoTrack)
+  */
+float GetAngle_NoTrack(void)
+{
+    return (float)as5600_angle_single;
+}
+
+/**
+  * @brief  获取速度 (使用HAL_GetTick, 适配F407)
+  */
+static uint32_t Last_Vel_tick = 0;
+static float Vel_Last_Angle = 0.0f;
+static uint8_t vel_initialized = 0;
+
+float GetVelocity(void)
+{
+    uint32_t now = HAL_GetTick();
+    float Vel_Angle = GetAngle();
+
+    /* 首次调用, 只记录不计算 */
+    if (!vel_initialized)
+    {
+        Vel_Last_Angle = Vel_Angle;
+        Last_Vel_tick = now;
+        vel_initialized = 1;
+        return 0.0f;
+    }
+
+    float dt = (now - Last_Vel_tick) * 1e-3f;  /* ms → s */
+    Last_Vel_tick = now;
+
+    if (dt < 0.001f) dt = 0.001f;  /* 最小1ms */
+    if (dt > 0.5f) dt = 0.5f;      /* 最大500ms */
+
+    float velocity = (Vel_Angle - Vel_Last_Angle) / dt;
+
+    Vel_Last_Angle = Vel_Angle;
+
+    return velocity;
+}

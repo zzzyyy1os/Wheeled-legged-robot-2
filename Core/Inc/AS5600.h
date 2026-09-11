@@ -24,4 +24,9 @@ uint8_t AS5600_Read(void);
 float AS5600_GetAngle_Without_Track(void);
 float AS5600_GetAngle(void);
 
+/* V3P风格接口 */
+float GetAngle(void);           /* 多圈角度 */
+float GetAngle_NoTrack(void);   /* 单圈角度 */
+float GetVelocity(void);        /* 速度 (SysTick计时) */
+
 #endif
