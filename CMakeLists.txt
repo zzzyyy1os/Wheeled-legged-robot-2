@@ -50,6 +50,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/font.c
     Core/Src/AS5600.c
     Core/Src/AS5600_M2.c
+    Core/Src/spi_slave.c
     Core/Src/uart_comm.c
     Core/Src/PID.c
     Core/Src/LPF.c
