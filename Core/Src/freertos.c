@@ -2,11 +2,12 @@
 /**
   ******************************************************************************
   * File Name          : freertos.c
-  * Description        : FOC电机控制
-  *                      - AS5600Task: 编码器读取
-  *                      - MotorTask: 速度/位置闭环控制
-  *                      - OLEDTask: 显示刷新
-  *                      - UARTTask: 接收目标值
+  * Description        : 双电机FOC速度闭环控制
+  *                      - AS5600Task:    M1编码器读取 (I2C3)
+  *                      - AS5600M2Task:  M2编码器读取 (I2C2)
+  *                      - MotorTask:     M1+M2速度闭环控制
+  *                      - OLEDTask:      分屏显示双电机参数
+  *                      - UARTTask:      串口DMA接收A/B命令
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -23,6 +24,7 @@
 #include "usart.h"
 #include "DengFOC.h"
 #include "AS5600.h"
+#include "AS5600_M2.h"
 #include "uart_comm.h"
 #include "OLED.h"
 #include <stdio.h>
@@ -32,52 +34,43 @@
 /* USER CODE END Includes */
 
 /* =========================================================================
- * 用户配置区 - 在这里修改电机模式和PID参数
+ * 用户配置区 - 双电机PID参数
  * ========================================================================= */
 
-/* 电机运行模式 (取消注释你想要的模式, 只能选一个) */
-// #define MOTOR_MODE_POS_CLOSEDLOOP   /* 位置闭环 */
-#define MOTOR_MODE_VEL_CLOSEDLOOP   /* 速度闭环 */
+/* M1 速度环 PID 参数 */
+#define M1_VEL_KP        0.02f
+#define M1_VEL_KI        0.05f
+#define M1_VEL_KD        0.0f
+#define M1_VEL_LPF_TF    0.4f
 
-/* 速度环 PID 参数 */
-#define VEL_KP        0.02f
-#define VEL_KI        0.05f
-#define VEL_KD        0.0f
-#define VEL_LPF_TF    0.4f
-
-/* 位置环 PID 参数 */
-#define POS_KP        0.133f
-#define POS_KI        0.01f
-#define POS_KD        0.0f
+/* M2 速度环 PID 参数 */
+#define M2_VEL_KP        0.02f
+#define M2_VEL_KI        0.05f
+#define M2_VEL_KD        0.0f
+#define M2_VEL_LPF_TF    0.4f
 
 /* ========================================================================= */
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 
-typedef enum {
-    MODE_STOP = 0,
-    MODE_VEL_OPENLOOP,
-    MODE_VEL_CLOSEDLOOP,
-    MODE_POS_CLOSEDLOOP
-} MotorMode_t;
-
-/* 根据宏定义确定运行模式 */
-#ifdef MOTOR_MODE_POS_CLOSEDLOOP
-static volatile MotorMode_t motor_mode = MODE_POS_CLOSEDLOOP;
-#else
-static volatile MotorMode_t motor_mode = MODE_VEL_CLOSEDLOOP;
-#endif
-
-static volatile float target_velocity = 0.0f;
-static volatile float target_position = 0.0f;
+static volatile float m1_target_velocity = 0.0f;
+static volatile float m2_target_velocity = 0.0f;
 
 /* USER CODE END Variables */
 
-/* Definitions for AS5600Task */
+/* Definitions for AS5600Task (M1) */
 osThreadId_t AS5600TaskHandle;
 const osThreadAttr_t AS5600Task_attributes = {
   .name = "AS5600Task",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityHigh,
+};
+
+/* Definitions for AS5600M2Task (M2) */
+osThreadId_t AS5600M2TaskHandle;
+const osThreadAttr_t AS5600M2Task_attributes = {
+  .name = "AS5600M2Task",
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityHigh,
 };
@@ -108,6 +101,7 @@ const osThreadAttr_t UARTTask_attributes = {
 
 /* Function prototypes */
 void StartAS5600Task(void *argument);
+void StartAS5600M2Task(void *argument);
 void StartMotorTask(void *argument);
 void StartOLEDTask(void *argument);
 void StartUARTTask(void *argument);
@@ -119,10 +113,11 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
   /* USER CODE END Init */
 
-  AS5600TaskHandle = osThreadNew(StartAS5600Task, NULL, &AS5600Task_attributes);
-  MotorTaskHandle  = osThreadNew(StartMotorTask,  NULL, &MotorTask_attributes);
-  UARTTaskHandle   = osThreadNew(StartUARTTask,   NULL, &UARTTask_attributes);
-  OLEDTaskHandle   = osThreadNew(StartOLEDTask,   NULL, &OLEDTask_attributes);
+  AS5600TaskHandle   = osThreadNew(StartAS5600Task,   NULL, &AS5600Task_attributes);
+  AS5600M2TaskHandle = osThreadNew(StartAS5600M2Task, NULL, &AS5600M2Task_attributes);
+  MotorTaskHandle    = osThreadNew(StartMotorTask,    NULL, &MotorTask_attributes);
+  UARTTaskHandle     = osThreadNew(StartUARTTask,     NULL, &UARTTask_attributes);
+  OLEDTaskHandle     = osThreadNew(StartOLEDTask,     NULL, &OLEDTask_attributes);
 
   UART_Comm_Init();
 
@@ -131,16 +126,16 @@ void MX_FREERTOS_Init(void) {
 }
 
 /*============================================================================
- * AS5600Task - 编码器读取 (500Hz)
+ * AS5600Task - M1编码器读取 (500Hz, I2C3)
  *============================================================================*/
 void StartAS5600Task(void *argument)
 {
     AS5600_Init();
 
     if (as5600_ready)
-        UART_SendString("AS5600 ready\r\n");
+        UART_SendString("M1 AS5600 ready\r\n");
     else
-        UART_SendString("AS5600 init FAILED\r\n");
+        UART_SendString("M1 AS5600 FAILED\r\n");
 
     for (;;)
     {
@@ -149,7 +144,7 @@ void StartAS5600Task(void *argument)
             static uint8_t fail_cnt = 0;
             if (++fail_cnt >= 20)
             {
-                UART_SendString("AS5600 I2C fail\r\n");
+                UART_SendString("M1 I2C fail\r\n");
                 fail_cnt = 0;
             }
         }
@@ -158,101 +153,111 @@ void StartAS5600Task(void *argument)
 }
 
 /*============================================================================
- * MotorTask - 电机实时控制 (1kHz)
+ * AS5600M2Task - M2编码器读取 (500Hz, I2C2)
+ *============================================================================*/
+void StartAS5600M2Task(void *argument)
+{
+    AS5600_M2_Init();
+
+    if (as5600_m2_ready)
+        UART_SendString("M2 AS5600 ready\r\n");
+    else
+        UART_SendString("M2 AS5600 FAILED\r\n");
+
+    for (;;)
+    {
+        if (!AS5600_M2_Read())
+        {
+            static uint8_t fail_cnt = 0;
+            if (++fail_cnt >= 20)
+            {
+                UART_SendString("M2 I2C fail\r\n");
+                fail_cnt = 0;
+            }
+        }
+        osDelay(2);
+    }
+}
+
+/*============================================================================
+ * MotorTask - 双电机速度闭环控制 (1kHz)
  *============================================================================*/
 void StartMotorTask(void *argument)
 {
-    /* ---- 硬件初始化 ---- */
+    /* ---- M1 硬件初始化 ---- */
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+
+    /* ---- M2 硬件初始化 ---- */
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
     /* DWT微秒定时器 */
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT = 0;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
-    /* 等待AS5600就绪 */
-    UART_SendString("Waiting AS5600...\r\n");
+    /* ---- 等待M1编码器就绪 ---- */
+    UART_SendString("Wait M1...\r\n");
     while (!as5600_ready) { osDelay(10); }
-    UART_Printf("AS5600 OK\r\n");
+    UART_SendString("M1 OK\r\n");
 
-    /* 零电角度校准 */
-    UART_SendString("Aligning...\r\n");
+    /* ---- 等待M2编码器就绪 ---- */
+    UART_SendString("Wait M2...\r\n");
+    while (!as5600_m2_ready) { osDelay(10); }
+    UART_SendString("M2 OK\r\n");
+
+    /* ---- M1 零电角度校准 ---- */
+    UART_SendString("Align M1...\r\n");
     alignSensor();
-    UART_Printf("Align done\r\n");
+    UART_SendString("M1 align done\r\n");
+
+    /* ---- M2 零电角度校准 ---- */
+    UART_SendString("Align M2...\r\n");
+    alignSensor_M2();
+    UART_SendString("M2 align done\r\n");
 
     osDelay(100);
 
-    /* ---- 应用宏定义的PID参数 ---- */
-    vel_Kp     = VEL_KP;
-    vel_Ki     = VEL_KI;
-    vel_Kd     = VEL_KD;
-    vel_LPF_Tf = VEL_LPF_TF;
-    pos_Kp     = POS_KP;
-    pos_Ki     = POS_KI;
-    pos_Kd     = POS_KD;
+    /* ---- 应用M1 PID参数 ---- */
+    vel_Kp     = M1_VEL_KP;
+    vel_Ki     = M1_VEL_KI;
+    vel_Kd     = M1_VEL_KD;
+    vel_LPF_Tf = M1_VEL_LPF_TF;
 
-    /* 初始化闭环控制 */
+    /* ---- 应用M2 PID参数 ---- */
+    vel_m2_Kp     = M2_VEL_KP;
+    vel_m2_Ki     = M2_VEL_KI;
+    vel_m2_Kd     = M2_VEL_KD;
+    vel_m2_LPF_Tf = M2_VEL_LPF_TF;
+
+    /* 初始化双电机闭环控制 */
     velocityClosedloop_Init();
-    positionClosedloop_Init();
+    velocityClosedloop_M2_Init();
 
-    /* 打印当前配置 */
-#ifdef MOTOR_MODE_POS_CLOSEDLOOP
-    motor_mode = MODE_POS_CLOSEDLOOP;
-    UART_Printf("Motor ready. POS mode pkp:%.3f\r\n", pos_Kp);
-#else
-    motor_mode = MODE_VEL_CLOSEDLOOP;
-    UART_Printf("Motor ready. VEL mode kp:%.3f ki:%.3f\r\n", vel_Kp, vel_Ki);
-#endif
-
-    MotorMode_t mode_prev = MODE_STOP;
+    UART_Printf("M1 kp:%.3f ki:%.3f\r\n", vel_Kp, vel_Ki);
+    UART_Printf("M2 kp:%.3f ki:%.3f\r\n", vel_m2_Kp, vel_m2_Ki);
 
     for (;;)
     {
-        /* ---- 执行控制 ---- */
-        switch (motor_mode)
-        {
-            case MODE_STOP:
-                setPhaseVoltage(0, 0, 0);
-                break;
-            case MODE_VEL_OPENLOOP:
-                velocityOpenloop(target_velocity);
-                break;
-            case MODE_VEL_CLOSEDLOOP:
-                velocityClosedloop(target_velocity);
-                break;
-            case MODE_POS_CLOSEDLOOP:
-                positionClosedloop(target_position);
-                break;
-            default:
-                setPhaseVoltage(0, 0, 0);
-                break;
-        }
+        /* M1 速度闭环 */
+        velocityClosedloop(m1_target_velocity);
 
-        /* ---- 模式切换时重新初始化 ---- */
-        if (motor_mode != mode_prev)
-        {
-            if (motor_mode == MODE_VEL_CLOSEDLOOP)
-                velocityClosedloop_Init();
-            else if (motor_mode == MODE_POS_CLOSEDLOOP)
-            {
-                positionClosedloop_Init();
-                target_position = GetAngle();
-            }
-            else if (motor_mode == MODE_STOP)
-                setPhaseVoltage(0, 0, 0);
-            mode_prev = motor_mode;
-        }
+        /* M2 速度闭环 */
+        velocityClosedloop_M2(m2_target_velocity);
 
         osDelay(1);
     }
 }
 
 /*============================================================================
- * UARTTask - 串口接收目标值
- *   速度模式: 发送数字设置目标速度 (rad/s)
- *   位置模式: 发送数字设置目标角度 (rad)
+ * UARTTask - 串口DMA接收双电机命令
+ *   格式: A<速度>\n  设置M1目标速度
+ *         B<速度>\n  设置M2目标速度
+ *   示例: A10\n    M1目标=10 rad/s
+ *         B-5.5\n  M2目标=-5.5 rad/s
  *============================================================================*/
 void StartUARTTask(void *argument)
 {
@@ -263,71 +268,78 @@ void StartUARTTask(void *argument)
         if (uart_rx_queue != NULL &&
             osMessageQueueGet(uart_rx_queue, rx_cmd, NULL, osWaitForever) == osOK)
         {
-            rx_cmd[63] = '\0';
+            rx_cmd[UART_RX_BUF_SIZE - 1] = '\0';
             char *cmd = (char *)rx_cmd;
 
-            /* 解析数字 */
-            float val = atof(cmd);
-            if (val != 0.0f || cmd[0] == '0')
+            if (cmd[0] == 'A' || cmd[0] == 'a')
             {
-                if (motor_mode == MODE_POS_CLOSEDLOOP)
-                {
-                    target_position = val;
-                    UART_Printf("OK pos:%.4f\r\n", target_position);
-                }
-                else
-                {
-                    target_velocity = val;
-                    UART_Printf("OK vel:%.2f\r\n", target_velocity);
-                }
+                /* M1 命令 */
+                float val = atof(cmd + 1);
+                m1_target_velocity = val;
+                UART_Printf("M1:%.2f\r\n", m1_target_velocity);
+            }
+            else if (cmd[0] == 'B' || cmd[0] == 'b')
+            {
+                /* M2 命令 */
+                float val = atof(cmd + 1);
+                m2_target_velocity = val;
+                UART_Printf("M2:%.2f\r\n", m2_target_velocity);
+            }
+            else
+            {
+                UART_SendString("ERR: use A/B\r\n");
             }
         }
     }
 }
 
 /*============================================================================
- * OLEDTask - 显示刷新 (50Hz)
+ * OLEDTask - 双电机分屏显示 (50Hz)
+ *   左半: M1参数  右半: M2参数
+ *   每侧显示: T(目标), N(实际), E(误差)
  *============================================================================*/
 void StartOLEDTask(void *argument)
 {
     OLED_Init();
 
-    char buf[24];
+    char buf[12];
 
     for (;;)
     {
         OLED_NewFrame();
 
-        /* 第一行: 模式 */
-        const char *mode_str = "STOP";
-        if (motor_mode == MODE_VEL_OPENLOOP)   mode_str = "V_OPEN";
-        if (motor_mode == MODE_VEL_CLOSEDLOOP) mode_str = "V_PID";
-        if (motor_mode == MODE_POS_CLOSEDLOOP) mode_str = "P_PID";
-        sprintf(buf, "FOC %s", mode_str);
-        OLED_PrintASCIIString(0, 0, buf, &afont16x8, OLED_COLOR_NORMAL);
+        /* ---- 中间分隔线 ---- */
+        OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
 
-        /* 第二行: 目标 */
-        if (motor_mode == MODE_POS_CLOSEDLOOP)
-        {
-            float t = fmod(target_position, 2*PI);
-            if (t < 0) t += 2*PI;
-            sprintf(buf, "Tgt:%.2f", t);
-        }
-        else
-        {
-            sprintf(buf, "Tgt:%.2f", target_velocity);
-        }
+        /* ---- 左半: M1 ---- */
+        OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
+
+        /* M1 T (目标) */
+        sprintf(buf, "T:%.1f", m1_target_velocity);
         OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        /* 第三行: 实际速度 */
-        sprintf(buf, "Vel:%.2f", vel_actual_speed);
+        /* M1 N (实际) */
+        sprintf(buf, "N:%.1f", vel_actual_speed);
         OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        /* 第四行: 角度 */
-        float angle = fmod(GetAngle(), 2*PI);
-        if (angle < 0) angle += 2*PI;
-        sprintf(buf, "Ang:%.2f", angle);
+        /* M1 E (误差) */
+        sprintf(buf, "E:%.1f", m1_target_velocity - vel_actual_speed);
         OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        /* ---- 右半: M2 ---- */
+        OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
+
+        /* M2 T (目标) */
+        sprintf(buf, "T:%.1f", m2_target_velocity);
+        OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        /* M2 N (实际) */
+        sprintf(buf, "N:%.1f", vel_m2_actual_speed);
+        OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        /* M2 E (误差) */
+        sprintf(buf, "E:%.1f", m2_target_velocity - vel_m2_actual_speed);
+        OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
 
         OLED_ShowFrame();
 

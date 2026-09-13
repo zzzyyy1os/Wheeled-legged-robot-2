@@ -47,4 +47,23 @@ float PID_Update(PID_HandleTypeDef *hpid, float error);
   */
 float PID_Controller(float Kp, float Ki, float Kd, float Error);
 
+/* ======================== 多实例PID (双电机支持) ======================== */
+
+typedef struct {
+    uint32_t Timestamp_Last;
+    float    Last_Error;
+    float    Last_intergration;
+    uint8_t  initialized;
+} PID_Instance_t;
+
+/**
+  * @brief  PID实例初始化
+  */
+void PID_Instance_Init(PID_Instance_t *inst);
+
+/**
+  * @brief  PID实例计算 (独立状态, 不影响全局PID)
+  */
+float PID_Instance_Controller(PID_Instance_t *inst, float Kp, float Ki, float Kd, float Error);
+
 #endif /* __PID_H__ */

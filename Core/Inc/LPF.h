@@ -36,4 +36,22 @@ float LPF_Update(LPF_HandleTypeDef *hlpf, float x);
   */
 float Lowpassfilter(float Tf, float x);
 
+/* ======================== 多实例LPF (双电机支持) ======================== */
+
+typedef struct {
+    uint32_t Last_Timestamp;
+    float    Last_y;
+    uint8_t  initialized;
+} LPF_Instance_t;
+
+/**
+  * @brief  LPF实例初始化
+  */
+void LPF_Instance_Init(LPF_Instance_t *inst);
+
+/**
+  * @brief  LPF实例计算 (独立状态, 不影响全局LPF)
+  */
+float Lowpassfilter_Instance(LPF_Instance_t *inst, float Tf, float x);
+
 #endif /* __LPF_H__ */

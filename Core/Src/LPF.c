@@ -53,3 +53,41 @@ float LPF_Update(LPF_HandleTypeDef *hlpf, float x)
     (void)hlpf;
     return Lowpassfilter(0.1f, x);
 }
+
+/* ======================== 多实例LPF (双电机支持) ======================== */
+
+void LPF_Instance_Init(LPF_Instance_t *inst)
+{
+    inst->Last_Timestamp = 0;
+    inst->Last_y = 0.0f;
+    inst->initialized = 0;
+}
+
+float Lowpassfilter_Instance(LPF_Instance_t *inst, float Tf, float x)
+{
+    uint32_t now = HAL_GetTick();
+
+    if (!inst->initialized)
+    {
+        inst->Last_y = x;
+        inst->Last_Timestamp = now;
+        inst->initialized = 1;
+        return x;
+    }
+
+    float dt = (now - inst->Last_Timestamp) * 1e-3f;
+    inst->Last_Timestamp = now;
+
+    if (dt < 0.001f) dt = 0.001f;
+    if (dt > 0.5f)
+    {
+        inst->Last_y = x;
+        return x;
+    }
+
+    float alpha = Tf / (Tf + dt);
+    float y = alpha * inst->Last_y + (1.0f - alpha) * x;
+
+    inst->Last_y = y;
+    return y;
+}

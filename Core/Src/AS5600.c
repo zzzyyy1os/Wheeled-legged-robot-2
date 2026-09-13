@@ -19,38 +19,12 @@ volatile uint8_t  as5600_ready        = 0;
 static float    angle_prev     = 0.0f;
 static int32_t  full_rotations = 0;
 
-/* 中断方式相关 */
-static osSemaphoreId_t i2c_sem = NULL;
-static volatile uint8_t i2c_result = 0;
+/* 中断方式相关 (非static, 供AS5600_M2.c中的回调路由使用) */
+osSemaphoreId_t i2c_m1_sem = NULL;
+volatile uint8_t i2c_m1_result = 0;
 
 /* 前向声明 */
 static uint8_t AS5600_GetRawAngle(uint16_t *out);
-
-/* ======================== I2C 中断回调 ======================== */
-
-/**
-  * @brief  I2C 内存读取完成回调 (中断模式)
-  */
-void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
-{
-    if (hi2c->Instance == I2C3)
-    {
-        i2c_result = 1;
-        osSemaphoreRelease(i2c_sem);
-    }
-}
-
-/**
-  * @brief  I2C 错误回调
-  */
-void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
-{
-    if (hi2c->Instance == I2C3)
-    {
-        i2c_result = 0;
-        osSemaphoreRelease(i2c_sem);
-    }
-}
 
 /* ======================== 总线恢复 ======================== */
 
@@ -94,9 +68,9 @@ void AS5600_Init(void)
     as5600_ready = 0;
 
     /* 创建信号量 */
-    if (i2c_sem == NULL)
+    if (i2c_m1_sem == NULL)
     {
-        i2c_sem = osSemaphoreNew(1, 0, NULL);
+        i2c_m1_sem = osSemaphoreNew(1, 0, NULL);
     }
 
     /* 使能I2C3中断 (优先级5, 低于FreeRTOS系统调用阈值) */
@@ -134,8 +108,8 @@ static uint8_t AS5600_GetRawAngle(uint16_t *out)
     for (int retry = 0; retry <= AS5600_RETRY; retry++)
     {
         /* 清空信号量 */
-        while (osSemaphoreAcquire(i2c_sem, 0) == osOK) {}
-        i2c_result = 0;
+        while (osSemaphoreAcquire(i2c_m1_sem, 0) == osOK) {}
+        i2c_m1_result = 0;
 
         /* 启动中断读取 */
         if (HAL_I2C_Mem_Read_IT(&hi2c3, AS5600_I2C_ADDR,
@@ -150,7 +124,7 @@ static uint8_t AS5600_GetRawAngle(uint16_t *out)
         }
 
         /* 等待完成 (最多10ms) */
-        if (osSemaphoreAcquire(i2c_sem, pdMS_TO_TICKS(10)) == osOK && i2c_result)
+        if (osSemaphoreAcquire(i2c_m1_sem, pdMS_TO_TICKS(10)) == osOK && i2c_m1_result)
         {
             *out = ((uint16_t)buf[0] << 8) | buf[1];
             return 1;

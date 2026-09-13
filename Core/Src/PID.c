@@ -63,3 +63,43 @@ float PID_Update(PID_HandleTypeDef *hpid, float error)
     (void)hpid;
     return PID_Controller(0, 0, 0, error);
 }
+
+/* ======================== 多实例PID (双电机支持) ======================== */
+
+void PID_Instance_Init(PID_Instance_t *inst)
+{
+    inst->Timestamp_Last = HAL_GetTick();
+    inst->Last_Error = 0.0f;
+    inst->Last_intergration = 0.0f;
+    inst->initialized = 1;
+}
+
+float PID_Instance_Controller(PID_Instance_t *inst, float Kp, float Ki, float Kd, float Error)
+{
+    if (!inst->initialized)
+    {
+        inst->Timestamp_Last = HAL_GetTick();
+        inst->initialized = 1;
+    }
+
+    uint32_t now = HAL_GetTick();
+    float Ts = (now - inst->Timestamp_Last) * 1e-3f;
+    inst->Timestamp_Last = now;
+
+    if (Ts <= 0 || Ts > 0.05f) Ts = 0.001f;
+
+    float proportion = Kp * Error;
+
+    float intergration = inst->Last_intergration + Ki * 0.5f * Ts * Error;
+    intergration = _constrain(intergration, -LIMIT, LIMIT);
+
+    float differential = Kd * (Error - inst->Last_Error) / Ts;
+
+    float Output = proportion + intergration + differential;
+    Output = _constrain(Output, -LIMIT, LIMIT);
+
+    inst->Last_Error = Error;
+    inst->Last_intergration = intergration;
+
+    return Output;
+}

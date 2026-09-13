@@ -1,10 +1,12 @@
 /**
   * @file    DengFOC.c
-  * @brief   FOC控制库 (V3P风格精简版)
-  *          支持: 开环速度/闭环速度/闭环位置
+  * @brief   FOC控制库 (V3P风格精简版, 双电机)
+  *          M1: TIM1 + AS5600 (I2C3)
+  *          M2: TIM2 + AS5600_M2 (I2C2)
   */
 #include "DengFOC.h"
 #include "AS5600.h"
+#include "AS5600_M2.h"
 #include "PID.h"
 #include "LPF.h"
 #include "tim.h"
@@ -155,5 +157,82 @@ float positionClosedloop(float target_angle_rad)
     float Uq = PID_Controller(pos_Kp, pos_Ki, pos_Kd, (target_angle_rad - MOTOR_DIR * angle) * 180.0f / PI);
     setPhaseVoltage(Uq, 0, getElectricalAngle());
     pos_actual_angle = angle;
+    return Uq;
+}
+
+/******************************************************************
+ * M2 FOC函数 (TIM2 + I2C2 AS5600)
+ ******************************************************************/
+
+/* M2速度环参数 */
+float vel_m2_Kp           = 0.02f;
+float vel_m2_Ki           = 0.05f;
+float vel_m2_Kd           = 0.0f;
+float vel_m2_actual_speed = 0.0f;
+float vel_m2_LPF_Tf       = 0.4f;
+float zero_electric_angle_m2 = 0.0f;
+
+/* M2 PID/LPF实例 (独立状态, 不影响M1) */
+PID_Instance_t m2_pid_inst;
+LPF_Instance_t m2_lpf_inst;
+
+/* M2 PWM设置 */
+void setPwm_M2(float Ua, float Ub, float Uc)
+{
+    float dc_a = _constrain(Ua / voltage_power_supply, 0.0f, 1.0f);
+    float dc_b = _constrain(Ub / voltage_power_supply, 0.0f, 1.0f);
+    float dc_c = _constrain(Uc / voltage_power_supply, 0.0f, 1.0f);
+
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, (int)(dc_a * htim2.Init.Period));
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (int)(dc_b * htim2.Init.Period));
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, (int)(dc_c * htim2.Init.Period));
+}
+
+/* M2 SVPWM */
+void setPhaseVoltage_M2(float Uq, float Ud, float angle_el)
+{
+    float Ualpha = -Uq * sin(angle_el);
+    float Ubeta  =  Uq * cos(angle_el);
+
+    float Ua = Ualpha + voltage_power_supply / 2;
+    float Ub = (sqrt(3) * Ubeta - Ualpha) / 2 + voltage_power_supply / 2;
+    float Uc = (-Ualpha - sqrt(3) * Ubeta) / 2 + voltage_power_supply / 2;
+
+    setPwm_M2(Ua, Ub, Uc);
+}
+
+/* M2电角度 */
+float getElectricalAngle_M2(void)
+{
+    return _normalizeAngle((float)(MOTOR_PP * MOTOR_DIR) * as5600_m2_angle_single - zero_electric_angle_m2);
+}
+
+/* M2零电角度校准 */
+void alignSensor_M2(void)
+{
+    setPhaseVoltage_M2(3.0f, 0, _3PI_2);
+    HAL_Delay(3000);
+
+    zero_electric_angle_m2 = getElectricalAngle_M2();
+
+    setPhaseVoltage_M2(0, 0, 0);
+    HAL_Delay(500);
+}
+
+/* M2速度闭环初始化 */
+void velocityClosedloop_M2_Init(void)
+{
+    vel_m2_actual_speed = 0.0f;
+    PID_Instance_Init(&m2_pid_inst);
+    LPF_Instance_Init(&m2_lpf_inst);
+}
+
+/* M2速度闭环控制 */
+float velocityClosedloop_M2(float target_velocity)
+{
+    float Vel = Lowpassfilter_Instance(&m2_lpf_inst, vel_m2_LPF_Tf, GetVelocity_M2());
+    float Uq  = PID_Instance_Controller(&m2_pid_inst, vel_m2_Kp, vel_m2_Ki, vel_m2_Kd, MOTOR_DIR * (target_velocity - Vel));
+    setPhaseVoltage_M2(Uq, 0, getElectricalAngle_M2());
+    vel_m2_actual_speed = Vel;
     return Uq;
 }
