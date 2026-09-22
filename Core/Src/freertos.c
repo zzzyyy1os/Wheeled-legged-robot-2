@@ -122,10 +122,6 @@ const osThreadAttr_t UARTTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-};
-
 /* ADC测试任务 */
 osThreadId_t ADCTestTaskHandle;
 const osThreadAttr_t ADCTestTask_attributes = {
@@ -465,6 +461,7 @@ void StartOLEDTask(void *argument)
         /* ---- 中间分隔线 ---- */
         OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
 
+#if (CURRENT_LOOP_TEST == 3)
         /* ========== 速度+电流双闭环显示 ========== */
 
         /* ---- 左半: M1 ---- */
@@ -569,6 +566,7 @@ void StartADCTestTask(void *argument)
 
     for (;;)
     {
+#if (CURRENT_LOOP_TEST == 3)
         /* 速度+电流双闭环: 目标速度+实际速度+电流 */
         UART_Printf("T1:%.1f V1:%.1f I1:%.2f | T2:%.1f V2:%.1f I2:%.2f\r\n",
             m1_target_velocity, vel_actual_speed, cur_m1_actual_iq,

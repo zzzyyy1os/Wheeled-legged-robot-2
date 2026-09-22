@@ -13,7 +13,6 @@
 #include "tim.h"
 
 #define PI         3.14159265359f
-#define _3PI_2     4.71238898f
 
 /* ======================== 内部变量 ======================== */
 float voltage_power_supply = 12.0f;
