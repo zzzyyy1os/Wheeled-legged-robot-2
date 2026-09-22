@@ -400,31 +400,17 @@ float currentClosedloop_M2(float target_iq)
 }
 
 /******************************************************************
- * 三环嵌套 (移植自V3P)
- *   位置环 → 速度环 → 电流环 → PWM
+ * 速度+电流双闭环 (移植自V3P)
  ******************************************************************/
-
-/* 位置环参数 */
-float pos_m1_Kp           = 2.0f;
-float pos_m1_Ki           = 0.0f;
-float pos_m1_Kd           = 0.0f;
-float pos_m1_actual_angle = 0.0f;
-
-float pos_m2_Kp           = 2.0f;
-float pos_m2_Ki           = 0.0f;
-float pos_m2_Kd           = 0.0f;
-float pos_m2_actual_angle = 0.0f;
 
 /* 速度限制 */
 float velocity_limit = 10.0f;
 
-/* M1 位置环 PID/LPF 实例 */
-static PID_Instance_t m1_pos_pid_inst;
-static PID_Instance_t m1_vel_pid_inst;   /* 三环用独立速度PID */
-static LPF_Instance_t m1_vel_lpf_inst;   /* 三环用独立速度LPF */
+/* M1 速度PID/LPF实例 */
+static PID_Instance_t m1_vel_pid_inst;
+static LPF_Instance_t m1_vel_lpf_inst;
 
-/* M2 位置环 PID/LPF 实例 */
-static PID_Instance_t m2_pos_pid_inst;
+/* M2 速度PID/LPF实例 */
 static PID_Instance_t m2_vel_pid_inst;
 static LPF_Instance_t m2_vel_lpf_inst;
 
@@ -493,61 +479,3 @@ float velocityCurrentClosedloop_M2(float target_velocity)
     return target_iq;
 }
 
-/******************************************************************
- * M1 三环嵌套初始化
- ******************************************************************/
-void tripleLoop_M1_Init(void)
-{
-    pos_m1_actual_angle = 0.0f;
-    PID_Instance_Init(&m1_pos_pid_inst);
-    velocityCurrentClosedloop_M1_Init();
-}
-
-/******************************************************************
- * M1 三环嵌套: 位置环 → 速度环 → 电流环
- *   输入: 目标角度 (rad)
- *   内部调用: velocityCurrentClosedloop_M1()
- ******************************************************************/
-float tripleLoop_M1(float target_angle_rad)
-{
-    /* 读取当前角度 */
-    float angle = GetAngle();
-    pos_m1_actual_angle = angle;
-
-    /* 位置PID → 目标速度 (角度误差转速度) */
-    float target_velocity = PID_Instance_Controller(&m1_pos_pid_inst,
-                                                     pos_m1_Kp, pos_m1_Ki, pos_m1_Kd,
-                                                     (target_angle_rad - MOTOR_DIR * angle) * 180.0f / PI);
-
-    /* 速度+电流双闭环 */
-    velocityCurrentClosedloop_M1(target_velocity);
-
-    return target_velocity;
-}
-
-/******************************************************************
- * M2 三环嵌套初始化
- ******************************************************************/
-void tripleLoop_M2_Init(void)
-{
-    pos_m2_actual_angle = 0.0f;
-    PID_Instance_Init(&m2_pos_pid_inst);
-    velocityCurrentClosedloop_M2_Init();
-}
-
-/******************************************************************
- * M2 三环嵌套: 位置环 → 速度环 → 电流环
- ******************************************************************/
-float tripleLoop_M2(float target_angle_rad)
-{
-    float angle = GetAngle_M2();
-    pos_m2_actual_angle = angle;
-
-    float target_velocity = PID_Instance_Controller(&m2_pos_pid_inst,
-                                                     pos_m2_Kp, pos_m2_Ki, pos_m2_Kd,
-                                                     (target_angle_rad - MOTOR_DIR * angle) * 180.0f / PI);
-
-    velocityCurrentClosedloop_M2(target_velocity);
-
-    return target_velocity;
-}
