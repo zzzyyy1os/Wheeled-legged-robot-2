@@ -8,7 +8,6 @@
   *                      - MotorTask:     M1+M2速度闭环控制
   *                      - OLEDTask:      分屏显示双电机参数
   *                      - UARTTask:      串口DMA接收A/B命令
-  *                      - SPITask:       SPI2从机接收F103-N命令
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -27,7 +26,6 @@
 #include "AS5600.h"
 #include "AS5600_M2.h"
 #include "uart_comm.h"
-#include "spi_slave.h"
 #include "OLED.h"
 #include "adc_current.h"
 #include <stdio.h>
@@ -138,10 +136,6 @@ const osThreadAttr_t UARTTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
-/* Definitions for SPITask */
-osThreadId_t SPITaskHandle;
-const osThreadAttr_t SPITask_attributes = {
-  .name = "SPITask",
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
@@ -160,7 +154,6 @@ void StartAS5600M2Task(void *argument);
 void StartMotorTask(void *argument);
 void StartOLEDTask(void *argument);
 void StartUARTTask(void *argument);
-void StartSPITask(void *argument);
 void StartADCTestTask(void *argument);
 
 /* USER CODE BEGIN Init */
@@ -175,11 +168,9 @@ void MX_FREERTOS_Init(void) {
   MotorTaskHandle    = osThreadNew(StartMotorTask,    NULL, &MotorTask_attributes);
   UARTTaskHandle     = osThreadNew(StartUARTTask,     NULL, &UARTTask_attributes);
   OLEDTaskHandle     = osThreadNew(StartOLEDTask,     NULL, &OLEDTask_attributes);
-  SPITaskHandle      = osThreadNew(StartSPITask,      NULL, &SPITask_attributes);
   ADCTestTaskHandle  = osThreadNew(StartADCTestTask,  NULL, &ADCTestTask_attributes);
 
   UART_Comm_Init();
-  SPI_Slave_Init();
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* USER CODE END RTOS_THREADS */
@@ -515,48 +506,6 @@ void StartUARTTask(void *argument)
     }
 }
 
-/*============================================================================
- * SPITask - SPI2从机接收F103-N命令
- *   帧格式: [0]=0xAA [1]=CMD [2..5]=Data(BE) [6]=XOR [7]=0x55
- *   命令: 0x01=心跳, 0x02=MPU数据, 0x03=M1速度, 0x04=M2速度
- *   速度编码: float×10 → int32 (大端序)
- *
- *   流程: SPI_Slave_WaitAndProcess() 阻塞等待帧→校验→入队
- *         然后从队列取出命令→更新电机目标速度
- *============================================================================*/
-void StartSPITask(void *argument)
-{
-    SPI_RxItem_t rx_item;
-
-    for (;;)
-    {
-        /* 阻塞等待SPI帧接收完成 (中断回调释放信号量) */
-        SPI_Slave_WaitAndProcess();
-
-        /* 从队列取出刚收到的命令并处理 */
-        while (spiRxQueueHandle != NULL &&
-               osMessageQueueGet(spiRxQueueHandle, &rx_item, NULL, 0) == osOK)
-        {
-            switch (rx_item.cmd)
-            {
-                case SPI_CMD_M1_VEL:
-                {
-                    m1_target_velocity = (float)rx_item.data / 10.0f;
-                    break;
-                }
-                case SPI_CMD_M2_VEL:
-                {
-                    m2_target_velocity = (float)rx_item.data / 10.0f;
-                    break;
-                }
-                case SPI_CMD_HEARTBEAT:
-                case SPI_CMD_MPU_DATA:
-                default:
-                    break;
-            }
-        }
-    }
-}
 
 /*============================================================================
  * OLEDTask - 双电机分屏显示 (50Hz)
