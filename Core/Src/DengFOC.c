@@ -270,9 +270,13 @@ static LPF_Instance_t m1_cur_lpf_inst;
 static PID_Instance_t m2_cur_pid_inst;
 static LPF_Instance_t m2_cur_lpf_inst;
 
-/* 电流传感器实例 */
-static Current_Sensor_t current_sensor_m1 = { .Sen_Num = 0, .gain_sign = -1.0f };
-static Current_Sensor_t current_sensor_m2 = { .Sen_Num = 1, .gain_sign = 1.0f };
+/* 电流传感器实例
+ * gain_sign: 控制电流反馈极性, +1或-1
+ * 如果电流环导致电机来回震荡, 说明极性反了, 需要把gain_sign取反
+ * M1和M2的极性可能不同(取决于硬件接线), 需要分别调试
+ */
+static Current_Sensor_t current_sensor_m1 = { .Sen_Num = 0, .gain_sign = 1.0f };
+static Current_Sensor_t current_sensor_m2 = { .Sen_Num = 1, .gain_sign = -1.0f };
 
 /******************************************************************
  * Clarke + Park 变换: Ia, Ib, θe → Iq
@@ -433,6 +437,16 @@ float velocityCurrentClosedloop_M1(float target_velocity)
     /* 速度限制 */
     target_velocity = _constrain(target_velocity, -velocity_limit, velocity_limit);
 
+    /* 目标为0时重置PID, 防止积分累积导致电机停不下来 */
+    if (target_velocity == 0.0f)
+    {
+        PID_Instance_Reset(&m1_vel_pid_inst);
+        LPF_Instance_Reset(&m1_vel_lpf_inst);
+        currentClosedloop_M1(0.0f);
+        vel_actual_speed = 0.0f;
+        return 0.0f;
+    }
+
     /* 速度LPF */
     float Vel = Lowpassfilter_Instance(&m1_vel_lpf_inst, vel_LPF_Tf, GetVelocity());
 
@@ -465,6 +479,16 @@ void velocityCurrentClosedloop_M2_Init(void)
 float velocityCurrentClosedloop_M2(float target_velocity)
 {
     target_velocity = _constrain(target_velocity, -velocity_limit, velocity_limit);
+
+    /* 目标为0时重置PID, 防止积分累积导致电机停不下来 */
+    if (target_velocity == 0.0f)
+    {
+        PID_Instance_Reset(&m2_vel_pid_inst);
+        LPF_Instance_Reset(&m2_vel_lpf_inst);
+        currentClosedloop_M2(0.0f);
+        vel_m2_actual_speed = 0.0f;
+        return 0.0f;
+    }
 
     float Vel = Lowpassfilter_Instance(&m2_vel_lpf_inst, vel_m2_LPF_Tf, GetVelocity_M2());
 

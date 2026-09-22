@@ -56,7 +56,7 @@ void ADC_Current_Init(void)
 
     /* ---- ADC1 ---- */
     my_hadc.Instance                   = ADC1;
-    my_hadc.Init.ClockPrescaler        = ADC_CLOCKPRESCALER_PCLK_DIV4;
+    my_hadc.Init.ClockPrescaler        = ADC_CLOCKPRESCALER_PCLK_DIV6; /* 168/6=28MHz, <36MHz max */
     my_hadc.Init.Resolution            = ADC_RESOLUTION_12B;
     my_hadc.Init.ScanConvMode          = ENABLE;
     my_hadc.Init.ContinuousConvMode    = ENABLE;
@@ -84,6 +84,13 @@ void ADC_Current_Init(void)
     /* ---- DMA中断 ---- */
     HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+
+    /* ---- ADC校准 (关键! STM32F407必须校准才能获得准确读数) ---- */
+    /* ADC_CR2 bit2 = ADCAL (校准位) */
+    HAL_ADC_Stop(&my_hadc);
+    my_hadc.Instance->CR2 |= (1U << 2);   /* 启动校准 */
+    while (my_hadc.Instance->CR2 & (1U << 2)) {}  /* 等待校准完成 */
+    UART_Printf("ADC calibration done\r\n");
 
     /* ---- 启动 ---- */
     HAL_ADC_Start_DMA(&my_hadc, (uint32_t *)adc_dma_buf, ADC_CHANNELS);
@@ -152,19 +159,54 @@ void CurrSense_Init(Current_Sensor_t *sensor)
 }
 
 /******************************************************************
- * 获取相电流 (ADC原始值 → 电压 → 电流)
+ * ADC原始值IIR低通滤波 (抑制PWM开关噪声)
+ *   alpha越小滤波越强, 但延迟越大
+ *   alpha=0.2 ≈ 5次平均效果, 延迟约2个采样周期
+ ******************************************************************/
+static float adc_filtered[4] = {0};
+static uint8_t adc_filter_inited = 0;
+#define ADC_FILTER_ALPHA  0.2f
+
+static void adc_filter_update(void)
+{
+    if (!adc_filter_inited)
+    {
+        /* 首次用原始值初始化 */
+        for (int i = 0; i < 4; i++)
+            adc_filtered[i] = (float)adc_dma_buf[i];
+        adc_filter_inited = 1;
+    }
+    else
+    {
+        /* IIR低通: y = alpha*x + (1-alpha)*y */
+        for (int i = 0; i < 4; i++)
+            adc_filtered[i] += ADC_FILTER_ALPHA * ((float)adc_dma_buf[i] - adc_filtered[i]);
+    }
+}
+
+void ADC_Filter_Reset(void)
+{
+    adc_filter_inited = 0;
+    for (int i = 0; i < 4; i++)
+        adc_filtered[i] = 0;
+}
+
+/******************************************************************
+ * 获取相电流 (ADC原始值 → 滤波 → 电压 → 电流)
  *   gain = 1 / R_shunt / Amp_gain = 2.0 A/V
- *   注意: V3P原版对Ia取反 (gain_a = -gain), 这里保留
  ******************************************************************/
 void GetPhaseCurrent(Current_Sensor_t *sensor)
 {
+    /* 更新ADC滤波值 */
+    adc_filter_update();
+
     /* 确定ADC通道索引 */
     int idx_a = (sensor->Sen_Num == 0) ? 0 : 2;
     int idx_b = idx_a + 1;
 
-    /* ADC → 电压 */
-    float voltage_a = (float)adc_dma_buf[idx_a] * ADC_CONV;
-    float voltage_b = (float)adc_dma_buf[idx_b] * ADC_CONV;
+    /* 滤波后的ADC → 电压 */
+    float voltage_a = adc_filtered[idx_a] * ADC_CONV;
+    float voltage_b = adc_filtered[idx_b] * ADC_CONV;
 
     /* 电压 → 电流 (减偏移, 乘增益) */
     float vlots_to_amps = 1.0f / SHUNT_RESISTOR / AMP_GAIN;

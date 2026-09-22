@@ -39,33 +39,33 @@
  * ========================================================================= */
 
 /* M1 速度环 PID 参数 */
-#define M1_VEL_KP        0.02f
-#define M1_VEL_KI        0.05f
+#define M1_VEL_KP        0.1f
+#define M1_VEL_KI        0.1f
 #define M1_VEL_KD        0.0f
-#define M1_VEL_LPF_TF    0.4f
+#define M1_VEL_LPF_TF    0.5f
 
 /* M2 速度环 PID 参数 */
-#define M2_VEL_KP        0.02f
-#define M2_VEL_KI        0.05f
+#define M2_VEL_KP        0.1f
+#define M2_VEL_KI        0.1f
 #define M2_VEL_KD        0.0f
-#define M2_VEL_LPF_TF    0.4f
+#define M2_VEL_LPF_TF    0.5f
 
-/* M1 电流环 PID 参数 (降低增益减少振荡, 增大LPF减少噪声) */
-#define M1_CUR_KP        1.0f
+/* M1 电流环 PID 参数 */
+#define M1_CUR_KP        3.0f
 #define M1_CUR_KI        50.0f
 #define M1_CUR_KD        0.0f
-#define M1_CUR_LPF_TF    0.05f
+#define M1_CUR_LPF_TF    0.02f
 
 /* M2 电流环 PID 参数 */
-#define M2_CUR_KP        1.0f
+#define M2_CUR_KP        3.0f
 #define M2_CUR_KI        50.0f
 #define M2_CUR_KD        0.0f
-#define M2_CUR_LPF_TF    0.05f
+#define M2_CUR_LPF_TF    0.02f
 
 /* 速度限制 (rad/s) */
-#define VELOCITY_LIMIT   10.0f
+#define VELOCITY_LIMIT   20.0f
 
-/* 控制模式选择: 0=速度环, 1=电流环, 2=ADC诊断, 3=速度+电流双闭环 */
+/* 控制模式选择: 0=速度环, 1=电流环, 2=ADC诊断, 3=速度+电流双闭环, 4=三环嵌套 */
 #define CURRENT_LOOP_TEST  3
 
 /* ========================================================================= */
@@ -566,7 +566,19 @@ void StartADCTestTask(void *argument)
 
     for (;;)
     {
-#if (CURRENT_LOOP_TEST == 3)
+#if (CURRENT_LOOP_TEST == 0)
+        /* 速度环模式: 打印原始ADC + 电压 (监控电流传感器是否工作) */
+        UART_Printf("ADC:%u(%.3fV) %u(%.3fV) %u(%.3fV) %u(%.3fV)\r\n",
+            adc_dma_buf[0], adc_dma_buf[0]*ADC_CONV,
+            adc_dma_buf[1], adc_dma_buf[1]*ADC_CONV,
+            adc_dma_buf[2], adc_dma_buf[2]*ADC_CONV,
+            adc_dma_buf[3], adc_dma_buf[3]*ADC_CONV);
+#elif (CURRENT_LOOP_TEST == 4)
+        /* 三环模式: 角度+速度+电流 */
+        UART_Printf("A1:%.2f V1:%.1f I1:%.2f | A2:%.2f V2:%.1f I2:%.2f\r\n",
+            pos_m1_actual_angle, vel_actual_speed, cur_m1_actual_iq,
+            pos_m2_actual_angle, vel_m2_actual_speed, cur_m2_actual_iq);
+#elif (CURRENT_LOOP_TEST == 3)
         /* 速度+电流双闭环: 目标速度+实际速度+电流 */
         UART_Printf("T1:%.1f V1:%.1f I1:%.2f | T2:%.1f V2:%.1f I2:%.2f\r\n",
             m1_target_velocity, vel_actual_speed, cur_m1_actual_iq,
