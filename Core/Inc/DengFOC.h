@@ -69,4 +69,36 @@ extern float zero_electric_angle_m2;
 extern PID_Instance_t m2_pid_inst;
 extern LPF_Instance_t m2_lpf_inst;
 
+/* ======================== 电流环 (移植自V3P) ======================== */
+
+/* 电流环参数 (可调) */
+extern float cur_m1_Kp;
+extern float cur_m1_Ki;
+extern float cur_m1_Kd;
+extern float cur_m1_LPF_Tf;
+extern float cur_m1_actual_iq;
+
+extern float cur_m2_Kp;
+extern float cur_m2_Ki;
+extern float cur_m2_Kd;
+extern float cur_m2_LPF_Tf;
+extern float cur_m2_actual_iq;
+
+/* 偏移值 (调试用) */
+extern float cur_m1_offset_ia;
+extern float cur_m1_offset_ib;
+extern float cur_m2_offset_ia;
+extern float cur_m2_offset_ib;
+
+/* Clarke+Park变换: Ia,Ib,θe → Iq */
+float cal_Iq_Id(float current_a, float current_b, float angle_el);
+
+/* M1电流环 */
+void  currentClosedloop_M1_Init(void);
+float currentClosedloop_M1(float target_iq);
+
+/* M2电流环 */
+void  currentClosedloop_M2_Init(void);
+float currentClosedloop_M2(float target_iq);
+
 #endif /* __DENGFOC_H__ */

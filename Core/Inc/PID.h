@@ -66,4 +66,9 @@ void PID_Instance_Init(PID_Instance_t *inst);
   */
 float PID_Instance_Controller(PID_Instance_t *inst, float Kp, float Ki, float Kd, float Error);
 
+/**
+  * @brief  重置PID实例状态 (清除积分累积)
+  */
+void PID_Instance_Reset(PID_Instance_t *inst);
+
 #endif /* __PID_H__ */

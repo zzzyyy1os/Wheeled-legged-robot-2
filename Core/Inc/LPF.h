@@ -54,4 +54,9 @@ void LPF_Instance_Init(LPF_Instance_t *inst);
   */
 float Lowpassfilter_Instance(LPF_Instance_t *inst, float Tf, float x);
 
+/**
+  * @brief  重置LPF实例状态
+  */
+void LPF_Instance_Reset(LPF_Instance_t *inst);
+
 #endif /* __LPF_H__ */

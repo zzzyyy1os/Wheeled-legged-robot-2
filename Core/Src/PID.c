@@ -74,6 +74,13 @@ void PID_Instance_Init(PID_Instance_t *inst)
     inst->initialized = 1;
 }
 
+void PID_Instance_Reset(PID_Instance_t *inst)
+{
+    inst->Last_Error = 0.0f;
+    inst->Last_intergration = 0.0f;
+    inst->Timestamp_Last = HAL_GetTick();
+}
+
 float PID_Instance_Controller(PID_Instance_t *inst, float Kp, float Ki, float Kd, float Error)
 {
     if (!inst->initialized)

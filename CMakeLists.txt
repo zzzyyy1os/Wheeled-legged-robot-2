@@ -54,6 +54,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/uart_comm.c
     Core/Src/PID.c
     Core/Src/LPF.c
+    Core/Src/adc_current.c
 )
 
 # Add include paths

@@ -63,6 +63,13 @@ void LPF_Instance_Init(LPF_Instance_t *inst)
     inst->initialized = 0;
 }
 
+void LPF_Instance_Reset(LPF_Instance_t *inst)
+{
+    inst->Last_y = 0.0f;
+    inst->Last_Timestamp = HAL_GetTick();
+    inst->initialized = 0;
+}
+
 float Lowpassfilter_Instance(LPF_Instance_t *inst, float Tf, float x)
 {
     uint32_t now = HAL_GetTick();
