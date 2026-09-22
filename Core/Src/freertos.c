@@ -64,8 +64,21 @@
 #define M2_CUR_KD        0.0f
 #define M2_CUR_LPF_TF    0.05f
 
-/* 控制模式选择: 0=速度环, 1=电流环测试, 2=纯ADC诊断 */
-#define CURRENT_LOOP_TEST  1
+/* M1 位置环 PID 参数 (V3P三环嵌套) */
+#define M1_POS_KP        2.0f
+#define M1_POS_KI        0.0f
+#define M1_POS_KD        0.0f
+
+/* M2 位置环 PID 参数 */
+#define M2_POS_KP        2.0f
+#define M2_POS_KI        0.0f
+#define M2_POS_KD        0.0f
+
+/* 速度限制 (rad/s) */
+#define VELOCITY_LIMIT   10.0f
+
+/* 控制模式选择: 0=速度环, 1=电流环, 2=ADC诊断, 3=速度+电流双闭环, 4=三环嵌套 */
+#define CURRENT_LOOP_TEST  4
 
 /* ========================================================================= */
 
@@ -78,6 +91,10 @@ static volatile float m2_target_velocity = 0.0f;
 /* 电流环目标 (安培) */
 static volatile float m1_target_current = 0.1f;   /* 默认0.1A */
 static volatile float m2_target_current = 0.1f;
+
+/* 位置环目标 (弧度) */
+static volatile float m1_target_angle = 0.0f;
+static volatile float m2_target_angle = 0.0f;
 
 /* USER CODE END Variables */
 
@@ -312,53 +329,96 @@ void StartMotorTask(void *argument)
         osDelay(500);
     }
 
+#elif (CURRENT_LOOP_TEST == 3)
+    /* ========== 速度+电流双闭环模式 ========== */
+    UART_SendString("=== VELOCITY+CURRENT LOOP MODE ===\r\n");
+
+    if (!ADC_Is_Started()) { ADC_Current_Init(); }
+    HAL_Delay(100);
+
+    /* 应用PID参数 */
+    vel_Kp = M1_VEL_KP; vel_Ki = M1_VEL_KI; vel_Kd = M1_VEL_KD; vel_LPF_Tf = M1_VEL_LPF_TF;
+    vel_m2_Kp = M2_VEL_KP; vel_m2_Ki = M2_VEL_KI; vel_m2_Kd = M2_VEL_KD; vel_m2_LPF_Tf = M2_VEL_LPF_TF;
+    cur_m1_Kp = M1_CUR_KP; cur_m1_Ki = M1_CUR_KI; cur_m1_Kd = M1_CUR_KD; cur_m1_LPF_Tf = M1_CUR_LPF_TF;
+    cur_m2_Kp = M2_CUR_KP; cur_m2_Ki = M2_CUR_KI; cur_m2_Kd = M2_CUR_KD; cur_m2_LPF_Tf = M2_CUR_LPF_TF;
+    velocity_limit = VELOCITY_LIMIT;
+
+    UART_SendString("Calibrate M1 current...\r\n");
+    velocityCurrentClosedloop_M1_Init();
+    UART_SendString("Calibrate M2 current...\r\n");
+    velocityCurrentClosedloop_M2_Init();
+    UART_SendString("Ready\r\n");
+
+    for (;;)
+    {
+        velocityCurrentClosedloop_M1(m1_target_velocity);
+        velocityCurrentClosedloop_M2(m2_target_velocity);
+        osDelay(1);
+    }
+
+#elif (CURRENT_LOOP_TEST == 4)
+    /* ========== 三环嵌套模式 (位置+速度+电流) ========== */
+    UART_SendString("=== TRIPLE LOOP MODE ===\r\n");
+
+    if (!ADC_Is_Started()) { ADC_Current_Init(); }
+    HAL_Delay(100);
+
+    /* 应用PID参数 */
+    pos_m1_Kp = M1_POS_KP; pos_m1_Ki = M1_POS_KI; pos_m1_Kd = M1_POS_KD;
+    pos_m2_Kp = M2_POS_KP; pos_m2_Ki = M2_POS_KI; pos_m2_Kd = M2_POS_KD;
+    vel_Kp = M1_VEL_KP; vel_Ki = M1_VEL_KI; vel_Kd = M1_VEL_KD; vel_LPF_Tf = M1_VEL_LPF_TF;
+    vel_m2_Kp = M2_VEL_KP; vel_m2_Ki = M2_VEL_KI; vel_m2_Kd = M2_VEL_KD; vel_m2_LPF_Tf = M2_VEL_LPF_TF;
+    cur_m1_Kp = M1_CUR_KP; cur_m1_Ki = M1_CUR_KI; cur_m1_Kd = M1_CUR_KD; cur_m1_LPF_Tf = M1_CUR_LPF_TF;
+    cur_m2_Kp = M2_CUR_KP; cur_m2_Ki = M2_CUR_KI; cur_m2_Kd = M2_CUR_KD; cur_m2_LPF_Tf = M2_CUR_LPF_TF;
+    velocity_limit = VELOCITY_LIMIT;
+
+    UART_SendString("Calibrate M1...\r\n");
+    tripleLoop_M1_Init();
+    UART_SendString("Calibrate M2...\r\n");
+    tripleLoop_M2_Init();
+
+    UART_Printf("M1 pos kp:%.1f vel kp:%.1f ki:%.1f cur kp:%.1f ki:%.0f\r\n",
+        pos_m1_Kp, vel_Kp, vel_Ki, cur_m1_Kp, cur_m1_Ki);
+    UART_SendString("Ready. Use E<rad>(M1) F<rad>(M2)\r\n");
+
+    for (;;)
+    {
+        tripleLoop_M1(m1_target_angle);
+        tripleLoop_M2(m2_target_angle);
+        osDelay(1);
+    }
+
 #elif CURRENT_LOOP_TEST
     /* ========== 电流环测试模式 ========== */
     UART_SendString("=== CURRENT LOOP MODE ===\r\n");
 
-    /* 关键: 确保ADC已启动 (ADCTestTask可能还没初始化) */
     if (!ADC_Is_Started())
     {
         UART_SendString("ADC not started, init now...\r\n");
         ADC_Current_Init();
     }
-    HAL_Delay(100);  /* 等待DMA稳定 */
+    HAL_Delay(100);
     UART_Printf("ADC buf: %u %u %u %u\r\n",
         adc_dma_buf[0], adc_dma_buf[1], adc_dma_buf[2], adc_dma_buf[3]);
 
-    /* 应用电流环PID参数 */
-    cur_m1_Kp     = M1_CUR_KP;
-    cur_m1_Ki     = M1_CUR_KI;
-    cur_m1_Kd     = M1_CUR_KD;
-    cur_m1_LPF_Tf = M1_CUR_LPF_TF;
+    cur_m1_Kp = M1_CUR_KP; cur_m1_Ki = M1_CUR_KI; cur_m1_Kd = M1_CUR_KD; cur_m1_LPF_Tf = M1_CUR_LPF_TF;
+    cur_m2_Kp = M2_CUR_KP; cur_m2_Ki = M2_CUR_KI; cur_m2_Kd = M2_CUR_KD; cur_m2_LPF_Tf = M2_CUR_LPF_TF;
 
-    cur_m2_Kp     = M2_CUR_KP;
-    cur_m2_Ki     = M2_CUR_KI;
-    cur_m2_Kd     = M2_CUR_KD;
-    cur_m2_LPF_Tf = M2_CUR_LPF_TF;
-
-    /* 初始化电流传感器 (偏移校准, 电机必须静止!) */
     UART_SendString("Calibrate M1 current (gain=-1)...\r\n");
     currentClosedloop_M1_Init();
-    UART_Printf("M1 offset: %.4fV %.4fV\r\n",
-        cur_m1_offset_ia, cur_m1_offset_ib);
+    UART_Printf("M1 offset: %.4fV %.4fV\r\n", cur_m1_offset_ia, cur_m1_offset_ib);
 
     UART_SendString("Calibrate M2 current (gain=+1)...\r\n");
     currentClosedloop_M2_Init();
-    UART_Printf("M2 offset: %.4fV %.4fV\r\n",
-        cur_m2_offset_ia, cur_m2_offset_ib);
+    UART_Printf("M2 offset: %.4fV %.4fV\r\n", cur_m2_offset_ia, cur_m2_offset_ib);
 
     UART_Printf("M1 cur kp:%.1f ki:%.1f\r\n", cur_m1_Kp, cur_m1_Ki);
     UART_Printf("M2 cur kp:%.1f ki:%.1f\r\n", cur_m2_Kp, cur_m2_Ki);
 
     for (;;)
     {
-        /* M1 电流闭环 */
         currentClosedloop_M1(m1_target_current);
-
-        /* M2 电流闭环 */
         currentClosedloop_M2(m2_target_current);
-
         osDelay(1);
     }
 
@@ -366,19 +426,9 @@ void StartMotorTask(void *argument)
     /* ========== 速度闭环模式 (原有功能) ========== */
     UART_SendString("=== VELOCITY LOOP MODE ===\r\n");
 
-    /* 应用M1 PID参数 */
-    vel_Kp     = M1_VEL_KP;
-    vel_Ki     = M1_VEL_KI;
-    vel_Kd     = M1_VEL_KD;
-    vel_LPF_Tf = M1_VEL_LPF_TF;
+    vel_Kp = M1_VEL_KP; vel_Ki = M1_VEL_KI; vel_Kd = M1_VEL_KD; vel_LPF_Tf = M1_VEL_LPF_TF;
+    vel_m2_Kp = M2_VEL_KP; vel_m2_Ki = M2_VEL_KI; vel_m2_Kd = M2_VEL_KD; vel_m2_LPF_Tf = M2_VEL_LPF_TF;
 
-    /* 应用M2 PID参数 */
-    vel_m2_Kp     = M2_VEL_KP;
-    vel_m2_Ki     = M2_VEL_KI;
-    vel_m2_Kd     = M2_VEL_KD;
-    vel_m2_LPF_Tf = M2_VEL_LPF_TF;
-
-    /* 初始化双电机闭环控制 */
     velocityClosedloop_Init();
     velocityClosedloop_M2_Init();
 
@@ -387,12 +437,8 @@ void StartMotorTask(void *argument)
 
     for (;;)
     {
-        /* M1 速度闭环 */
         velocityClosedloop(m1_target_velocity);
-
-        /* M2 速度闭环 */
         velocityClosedloop_M2(m2_target_velocity);
-
         osDelay(1);
     }
 #endif
@@ -400,10 +446,12 @@ void StartMotorTask(void *argument)
 
 /*============================================================================
  * UARTTask - 串口DMA接收双电机命令
- *   速度环模式: A<速度>\n  B<速度>\n
- *   电流环模式: C<电流>\n  D<电流>\n  (单位: 安培)
- *   示例: C0.1\n  M1目标=0.1A
- *         D-0.05\n M2目标=-0.05A
+ *   速度: A<rad/s>\n  B<rad/s>\n
+ *   电流: C<安培>\n  D<安培>\n
+ *   位置: E<rad>\n    F<rad>\n
+ *   示例: A3.14\n  M1速度=3.14rad/s
+ *         C0.1\n   M1电流=0.1A
+ *         E6.28\n  M1角度=6.28rad (一圈)
  *============================================================================*/
 void StartUARTTask(void *argument)
 {
@@ -445,9 +493,23 @@ void StartUARTTask(void *argument)
                 m2_target_current = val;
                 UART_Printf("M2 cur:%.3fA\r\n", m2_target_current);
             }
+            else if (cmd[0] == 'E' || cmd[0] == 'e')
+            {
+                /* M1 位置命令 (rad) */
+                float val = atof(cmd + 1);
+                m1_target_angle = val;
+                UART_Printf("M1 angle:%.2f rad\r\n", m1_target_angle);
+            }
+            else if (cmd[0] == 'F' || cmd[0] == 'f')
+            {
+                /* M2 位置命令 (rad) */
+                float val = atof(cmd + 1);
+                m2_target_angle = val;
+                UART_Printf("M2 angle:%.2f rad\r\n", m2_target_angle);
+            }
             else
             {
-                UART_SendString("ERR: use A/B(vel) C/D(cur)\r\n");
+                UART_SendString("ERR: A/B(vel) C/D(cur) E/F(angle)\r\n");
             }
         }
     }
@@ -514,36 +576,84 @@ void StartOLEDTask(void *argument)
         /* ---- 中间分隔线 ---- */
         OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
 
-#if CURRENT_LOOP_TEST
+#if (CURRENT_LOOP_TEST == 4)
+        /* ========== 三环模式显示: 角度+速度+电流 ========== */
+
+        /* ---- 左半: M1 ---- */
+        OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "A:%.1f", pos_m1_actual_angle);
+        OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "V:%.1f", vel_actual_speed);
+        OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "I:%.2f", cur_m1_actual_iq);
+        OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        /* ---- 右半: M2 ---- */
+        OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "A:%.1f", pos_m2_actual_angle);
+        OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "V:%.1f", vel_m2_actual_speed);
+        OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "I:%.2f", cur_m2_actual_iq);
+        OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+#elif (CURRENT_LOOP_TEST == 3)
+        /* ========== 速度+电流双闭环显示 ========== */
+
+        /* ---- 左半: M1 ---- */
+        OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "T:%.1f", m1_target_velocity);
+        OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "V:%.1f", vel_actual_speed);
+        OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "I:%.2f", cur_m1_actual_iq);
+        OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        /* ---- 右半: M2 ---- */
+        OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "T:%.1f", m2_target_velocity);
+        OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "V:%.1f", vel_m2_actual_speed);
+        OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+        sprintf(buf, "I:%.2f", cur_m2_actual_iq);
+        OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+#elif CURRENT_LOOP_TEST
         /* ========== 电流环模式显示 ========== */
 
         /* ---- 左半: M1 ---- */
         OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
 
-        /* M1 Tgt (目标电流) */
         sprintf(buf, "T:%.3f", m1_target_current);
         OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        /* M1 Iq (实际电流) */
         sprintf(buf, "I:%.3f", cur_m1_actual_iq);
         OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        /* M1 Err (误差) */
         sprintf(buf, "E:%.3f", m1_target_current - cur_m1_actual_iq);
         OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
 
         /* ---- 右半: M2 ---- */
         OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
 
-        /* M2 Tgt (目标电流) */
         sprintf(buf, "T:%.3f", m2_target_current);
         OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        /* M2 Iq (实际电流) */
         sprintf(buf, "I:%.3f", cur_m2_actual_iq);
         OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        /* M2 Err (误差) */
         sprintf(buf, "E:%.3f", m2_target_current - cur_m2_actual_iq);
         OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
 
@@ -598,7 +708,17 @@ void StartADCTestTask(void *argument)
 
     for (;;)
     {
-#if (CURRENT_LOOP_TEST == 2)
+#if (CURRENT_LOOP_TEST == 4)
+        /* 三环模式: 角度+速度+电流 */
+        UART_Printf("A1:%.2f V1:%.1f I1:%.2f | A2:%.2f V2:%.1f I2:%.2f\r\n",
+            pos_m1_actual_angle, vel_actual_speed, cur_m1_actual_iq,
+            pos_m2_actual_angle, vel_m2_actual_speed, cur_m2_actual_iq);
+#elif (CURRENT_LOOP_TEST == 3)
+        /* 速度+电流双闭环: 目标速度+实际速度+电流 */
+        UART_Printf("T1:%.1f V1:%.1f I1:%.2f | T2:%.1f V2:%.1f I2:%.2f\r\n",
+            m1_target_velocity, vel_actual_speed, cur_m1_actual_iq,
+            m2_target_velocity, vel_m2_actual_speed, cur_m2_actual_iq);
+#elif (CURRENT_LOOP_TEST == 2)
         /* 诊断模式: 只打印原始ADC */
         UART_Printf("ADC: %u %u %u %u\r\n",
             adc_dma_buf[0], adc_dma_buf[1],

@@ -101,4 +101,36 @@ float currentClosedloop_M1(float target_iq);
 void  currentClosedloop_M2_Init(void);
 float currentClosedloop_M2(float target_iq);
 
+/* ======================== 三环嵌套 (移植自V3P) ======================== */
+
+/* 位置环参数 (可调) */
+extern float pos_m1_Kp;
+extern float pos_m1_Ki;
+extern float pos_m1_Kd;
+extern float pos_m1_actual_angle;
+
+extern float pos_m2_Kp;
+extern float pos_m2_Ki;
+extern float pos_m2_Kd;
+extern float pos_m2_actual_angle;
+
+/* 速度限制 (rad/s) */
+extern float velocity_limit;
+
+/* M1 速度+电流双闭环 */
+void  velocityCurrentClosedloop_M1_Init(void);
+float velocityCurrentClosedloop_M1(float target_velocity);
+
+/* M2 速度+电流双闭环 */
+void  velocityCurrentClosedloop_M2_Init(void);
+float velocityCurrentClosedloop_M2(float target_velocity);
+
+/* M1 三环嵌套 (位置+速度+电流) */
+void  tripleLoop_M1_Init(void);
+float tripleLoop_M1(float target_angle_rad);
+
+/* M2 三环嵌套 (位置+速度+电流) */
+void  tripleLoop_M2_Init(void);
+float tripleLoop_M2(float target_angle_rad);
+
 #endif /* __DENGFOC_H__ */
