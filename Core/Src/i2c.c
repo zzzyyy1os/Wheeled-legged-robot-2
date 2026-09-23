@@ -165,11 +165,10 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef* i2cHandle)
     /* I2C2 clock enable */
     __HAL_RCC_I2C2_CLK_ENABLE();
 
-    /* I2C2 NVIC - 使能中断 (用于AS5600 M2编码器中断读取) */
-    HAL_NVIC_SetPriority(I2C2_EV_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(I2C2_EV_IRQn);
-    HAL_NVIC_SetPriority(I2C2_ER_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(I2C2_ER_IRQn);
+    /* I2C2 NVIC - 中断在AS5600_M2_Init()中使能 (信号量创建后) */
+    HAL_NVIC_SetPriority(I2C2_EV_IRQn, 6, 0);
+    HAL_NVIC_SetPriority(I2C2_ER_IRQn, 6, 0);
+    /* 注意: 不在这里使能中断, 等信号量创建后再使能 */
   /* USER CODE BEGIN I2C2_MspInit 1 */
 
   /* USER CODE END I2C2_MspInit 1 */

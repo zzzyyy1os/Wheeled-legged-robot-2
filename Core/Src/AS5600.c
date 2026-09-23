@@ -141,23 +141,6 @@ static uint8_t AS5600_GetRawAngle(uint16_t *out)
 
 /* ======================== 公共接口 ======================== */
 
-float AS5600_GetAngle_Without_Track(void)
-{
-    uint16_t raw;
-    if (!AS5600_GetRawAngle(&raw)) return 0.0f;
-    return (float)raw * 0.08789f * 3.14159265f / 180.0f;
-}
-
-float AS5600_GetAngle(void)
-{
-    float val = AS5600_GetAngle_Without_Track();
-    float d_angle = val - angle_prev;
-    if (fabsf(d_angle) > (0.8f * 6.2831853f))
-        full_rotations += (d_angle > 0) ? -1 : 1;
-    angle_prev = val;
-    return (float)full_rotations * 6.2831853f + angle_prev;
-}
-
 uint8_t AS5600_Read(void)
 {
     uint16_t raw;

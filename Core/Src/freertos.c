@@ -31,9 +31,7 @@
 #include "adc_current.h"
 #include "key.h"
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
-#include <math.h>
 /* USER CODE END Includes */
 
 /* =========================================================================

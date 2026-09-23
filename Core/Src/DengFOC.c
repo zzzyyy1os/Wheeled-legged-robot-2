@@ -24,18 +24,18 @@ static float Ualpha, Ubeta = 0.0f;
 static float Ua = 0.0f, Ub = 0.0f, Uc = 0.0f;
 static float dc_a = 0.0f, dc_b = 0.0f, dc_c = 0.0f;
 
-/* ======================== 速度环参数 (外部可调) ======================== */
-float vel_Kp           = 0.02f;
-float vel_Ki           = 0.05f;
-float vel_Kd           = 0.0f;
-float vel_actual_speed = 0.0f;
-float vel_LPF_Tf       = 0.4f;
+/* ======================== 速度环参数 (由freertos.c赋值) ======================== */
+float vel_Kp           = 0;
+float vel_Ki           = 0;
+float vel_Kd           = 0;
+float vel_actual_speed = 0;
+float vel_LPF_Tf       = 0;
 
-/* ======================== 位置环参数 (外部可调) ======================== */
-float pos_Kp           = 0.133f;
-float pos_Ki           = 0.01f;
-float pos_Kd           = 0.0f;
-float pos_actual_angle = 0.0f;
+/* ======================== 位置环参数 (由freertos.c赋值) ======================== */
+float pos_Kp           = 0;
+float pos_Ki           = 0;
+float pos_Kd           = 0;
+float pos_actual_angle = 0;
 
 /******************************************************************
  * 基础FOC函数
@@ -128,9 +128,6 @@ float velocityOpenloop(float target_velocity)
 void velocityClosedloop_Init(void)
 {
     vel_actual_speed = 0.0f;
-    /* 重置PID和LPF状态 */
-    PID_Init(NULL, 0, 0, 0, 0, 0);
-    LPF_Init(NULL, 0);
 }
 
 float velocityClosedloop(float target_velocity)
@@ -164,13 +161,13 @@ float positionClosedloop(float target_angle_rad)
  * M2 FOC函数 (TIM2 + I2C2 AS5600)
  ******************************************************************/
 
-/* M2速度环参数 */
-float vel_m2_Kp           = 0.02f;
-float vel_m2_Ki           = 0.05f;
-float vel_m2_Kd           = 0.0f;
-float vel_m2_actual_speed = 0.0f;
-float vel_m2_LPF_Tf       = 0.4f;
-float zero_electric_angle_m2 = 0.0f;
+/* M2速度环参数 (由freertos.c赋值) */
+float vel_m2_Kp           = 0;
+float vel_m2_Ki           = 0;
+float vel_m2_Kd           = 0;
+float vel_m2_actual_speed = 0;
+float vel_m2_LPF_Tf       = 0;
+float zero_electric_angle_m2 = 0;
 
 /* M2 PID/LPF实例 (独立状态, 不影响M1) */
 PID_Instance_t m2_pid_inst;
@@ -244,25 +241,25 @@ float velocityClosedloop_M2(float target_velocity)
 #define _1_SQRT3  0.57735026919f
 #define _2_SQRT3  1.15470053838f
 
-/* M1 电流环参数 */
-float cur_m1_Kp        = 1.0f;
-float cur_m1_Ki        = 50.0f;
-float cur_m1_Kd        = 0.0f;
-float cur_m1_LPF_Tf    = 0.05f;
-float cur_m1_actual_iq = 0.0f;
+/* M1 电流环参数 (由freertos.c赋值) */
+float cur_m1_Kp        = 0;
+float cur_m1_Ki        = 0;
+float cur_m1_Kd        = 0;
+float cur_m1_LPF_Tf    = 0;
+float cur_m1_actual_iq = 0;
 
-/* M2 电流环参数 */
-float cur_m2_Kp        = 1.0f;
-float cur_m2_Ki        = 50.0f;
-float cur_m2_Kd        = 0.0f;
-float cur_m2_LPF_Tf    = 0.05f;
-float cur_m2_actual_iq = 0.0f;
+/* M2 电流环参数 (由freertos.c赋值) */
+float cur_m2_Kp        = 0;
+float cur_m2_Ki        = 0;
+float cur_m2_Kd        = 0;
+float cur_m2_LPF_Tf    = 0;
+float cur_m2_actual_iq = 0;
 
 /* 偏移值 (调试用) */
-float cur_m1_offset_ia = 0.0f;
-float cur_m1_offset_ib = 0.0f;
-float cur_m2_offset_ia = 0.0f;
-float cur_m2_offset_ib = 0.0f;
+float cur_m1_offset_ia = 0;
+float cur_m1_offset_ib = 0;
+float cur_m2_offset_ia = 0;
+float cur_m2_offset_ib = 0;
 
 /* 电流环 PID/LPF 实例 (独立状态) */
 static PID_Instance_t m1_cur_pid_inst;

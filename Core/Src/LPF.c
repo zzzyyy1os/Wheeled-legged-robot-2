@@ -8,14 +8,6 @@ static uint32_t Last_Timestamp = 0;
 static float Last_y = 0.0f;
 static uint8_t lpf_initialized = 0;
 
-void LPF_Init(LPF_HandleTypeDef *hlpf, float Tf)
-{
-    (void)hlpf; (void)Tf;
-    Last_Timestamp = 0;
-    Last_y = 0.0f;
-    lpf_initialized = 0;
-}
-
 float Lowpassfilter(float Tf, float x)
 {
     uint32_t now = HAL_GetTick();
@@ -45,13 +37,6 @@ float Lowpassfilter(float Tf, float x)
 
     Last_y = y;
     return y;
-}
-
-/* 保留旧接口兼容 */
-float LPF_Update(LPF_HandleTypeDef *hlpf, float x)
-{
-    (void)hlpf;
-    return Lowpassfilter(0.1f, x);
 }
 
 /* ======================== 多实例LPF (双电机支持) ======================== */

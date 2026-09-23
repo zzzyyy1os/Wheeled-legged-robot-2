@@ -122,10 +122,10 @@ void AS5600_M2_Init(void)
         i2c_m2_sem = osSemaphoreNew(1, 0, NULL);
     }
 
-    /* 使能I2C2中断 (优先级5) */
-    HAL_NVIC_SetPriority(I2C2_EV_IRQn, 5, 0);
+    /* 使能I2C2中断 (优先级6, 低于FreeRTOS阈值5) */
+    HAL_NVIC_SetPriority(I2C2_EV_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(I2C2_EV_IRQn);
-    HAL_NVIC_SetPriority(I2C2_ER_IRQn, 5, 0);
+    HAL_NVIC_SetPriority(I2C2_ER_IRQn, 6, 0);
     HAL_NVIC_EnableIRQ(I2C2_ER_IRQn);
 
     /* 尝试读取一次 (阻塞方式检测传感器) */
@@ -189,7 +189,7 @@ uint8_t AS5600_M2_Read(void)
     if (!AS5600_M2_GetRawAngle(&raw))
     {
         as5600_m2_error++;
-        if (as5600_m2_error >= 10)
+        if (as5600_m2_error >= 3)
         {
             AS5600_M2_BusRecovery();
             as5600_m2_error = 0;

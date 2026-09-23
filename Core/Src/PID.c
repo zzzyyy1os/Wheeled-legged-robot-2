@@ -17,15 +17,6 @@ static float Last_Error = 0.0f;
 static float Last_intergration = 0.0f;
 static uint8_t pid_initialized = 0;
 
-void PID_Init(PID_HandleTypeDef *hpid, float P, float I, float D, float ramp, float limit)
-{
-    (void)hpid; (void)P; (void)I; (void)D; (void)ramp; (void)limit;
-    Timestamp_Last = HAL_GetTick();
-    Last_Error = 0.0f;
-    Last_intergration = 0.0f;
-    pid_initialized = 1;
-}
-
 float PID_Controller(float Kp, float Ki, float Kd, float Error)
 {
     /* 首次调用, 初始化时间戳 */
@@ -55,13 +46,6 @@ float PID_Controller(float Kp, float Ki, float Kd, float Error)
     Last_intergration = intergration;
 
     return Output;
-}
-
-/* 保留旧接口兼容 */
-float PID_Update(PID_HandleTypeDef *hpid, float error)
-{
-    (void)hpid;
-    return PID_Controller(0, 0, 0, error);
 }
 
 /* ======================== 多实例PID (双电机支持) ======================== */

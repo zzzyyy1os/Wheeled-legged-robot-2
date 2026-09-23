@@ -1,38 +1,14 @@
 /**
   * @file    LPF.h
-  * @brief   一阶低通滤波器 (移植自 DengFOC)
+  * @brief   一阶低通器 (V3P风格, 适配F407)
   */
 #ifndef __LPF_H__
 #define __LPF_H__
 
 #include "main.h"
 
-typedef struct {
-    float Tf;           // 低通滤波时间常数 (秒)
-    float y_prev;       // 上一次滤波输出值
-    uint32_t timestamp_prev; // 上一次执行时间戳 (ms)
-} LPF_HandleTypeDef;
-
 /**
-  * @brief  初始化低通滤波器
-  * @param  hlpf   滤波器句柄
-  * @param  Tf     时间常数 (秒), 越大滤波越强
-  */
-void LPF_Init(LPF_HandleTypeDef *hlpf, float Tf);
-
-/**
-  * @brief  低通滤波器计算
-  * @param  hlpf   滤波器句柄
-  * @param  x      输入信号
-  * @retval 滤波后的输出
-  */
-float LPF_Update(LPF_HandleTypeDef *hlpf, float x);
-
-/**
-  * @brief  低通滤波器 (V3P风格, 简洁版)
-  * @param  Tf   时间常数 (秒)
-  * @param  x    输入信号
-  * @retval 滤波后的输出
+  * @brief  低通滤波器 (全局, M1使用)
   */
 float Lowpassfilter(float Tf, float x);
 
@@ -44,19 +20,8 @@ typedef struct {
     uint8_t  initialized;
 } LPF_Instance_t;
 
-/**
-  * @brief  LPF实例初始化
-  */
 void LPF_Instance_Init(LPF_Instance_t *inst);
-
-/**
-  * @brief  LPF实例计算 (独立状态, 不影响全局LPF)
-  */
-float Lowpassfilter_Instance(LPF_Instance_t *inst, float Tf, float x);
-
-/**
-  * @brief  重置LPF实例状态
-  */
 void LPF_Instance_Reset(LPF_Instance_t *inst);
+float Lowpassfilter_Instance(LPF_Instance_t *inst, float Tf, float x);
 
 #endif /* __LPF_H__ */
