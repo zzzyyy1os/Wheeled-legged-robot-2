@@ -86,9 +86,6 @@ static volatile uint8_t oled_page = 0;
 /* 系统就绪标志 */
 static volatile uint8_t system_ready = 0;
 
-/* 系统启动时间 (毫秒) */
-static volatile uint32_t system_start_ms = 0;
-
 /* USER CODE END Variables */
 
 /* Definitions for AS5600Task (M1) */
@@ -161,8 +158,6 @@ void StartKeyTask(void *argument);
 
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-  /* 记录系统启动时间 */
-  system_start_ms = HAL_GetTick();
   /* USER CODE END Init */
 
   AS5600TaskHandle   = osThreadNew(StartAS5600Task,   NULL, &AS5600Task_attributes);
@@ -268,8 +263,9 @@ void StartMotorTask(void *argument)
     setPhaseVoltage_M2(0, 0, 0);
     osDelay(1000);  /* 等待1秒让电机完全静止 */
 
-    /* 设置系统就绪标志 */
+    /* 设置系统就绪标志并发送串口消息 */
     system_ready = 1;
+    UART_SendString("ALL OK\r\n");
 
 #if (CURRENT_LOOP_TEST == 2)
     /* ========== 纯ADC诊断模式 (不运行电流环) ========== */
@@ -425,12 +421,7 @@ void StartOLEDTask(void *argument)
             sprintf(buf, "I:%.3f", cur_m1_actual_iq);
             OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            // 显示运行时间
-            uint32_t current_time = HAL_GetTick() - system_start_ms;
-            uint32_t seconds = current_time / 1000;
-            uint32_t millis = current_time % 1000;
-            sprintf(buf, "%lus%03ums", seconds, millis);
-            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+            /* 最后一行不显示任何内容 */
 
             /* ---- 右半: M2 ---- */
             OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
@@ -441,12 +432,7 @@ void StartOLEDTask(void *argument)
             sprintf(buf, "I:%.3f", cur_m2_actual_iq);
             OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            // 右侧也显示运行时间
-            current_time = HAL_GetTick() - system_start_ms;
-            seconds = current_time / 1000;
-            millis = current_time % 1000;
-            sprintf(buf, "%lus%03ums", seconds, millis);
-            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+            /* 最后一行不显示任何内容 */
         }
         else
         {
