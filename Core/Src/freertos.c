@@ -83,6 +83,9 @@ static volatile float m2_target_current = 0.0f;
 /* OLED翻页 (0=电机状态, 1=PID参数) */
 static volatile uint8_t oled_page = 0;
 
+/* 系统就绪标志 */
+static volatile uint8_t system_ready = 0;
+
 /* USER CODE END Variables */
 
 /* Definitions for AS5600Task (M1) */
@@ -260,6 +263,9 @@ void StartMotorTask(void *argument)
     setPhaseVoltage_M2(0, 0, 0);
     osDelay(1000);  /* 等待1秒让电机完全静止 */
 
+    /* 设置系统就绪标志 */
+    system_ready = 1;
+
 #if (CURRENT_LOOP_TEST == 2)
     /* ========== 纯ADC诊断模式 (不运行电流环) ========== */
 
@@ -420,10 +426,11 @@ void StartOLEDTask(void *argument)
             sprintf(buf, "I:%.3f", cur_m1_actual_iq);
             OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            if (as5600_ready) {
+            // 显示系统就绪状态：当系统完全准备接收电机参数时显示OK，否则显示NO
+            if (system_ready) {
                 OLED_PrintASCIIString(0, 48, "OK", &afont16x8, OLED_COLOR_NORMAL);
             } else {
-                OLED_PrintASCIIString(0, 48, "ER", &afont16x8, OLED_COLOR_NORMAL);
+                OLED_PrintASCIIString(0, 48, "NO", &afont16x8, OLED_COLOR_NORMAL);
             }
 
             /* ---- 右半: M2 ---- */
@@ -435,10 +442,11 @@ void StartOLEDTask(void *argument)
             sprintf(buf, "I:%.3f", cur_m2_actual_iq);
             OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            if (as5600_m2_ready) {
+            // M2侧也显示系统就绪状态
+            if (system_ready) {
                 OLED_PrintASCIIString(65, 48, "OK", &afont16x8, OLED_COLOR_NORMAL);
             } else {
-                OLED_PrintASCIIString(65, 48, "ER", &afont16x8, OLED_COLOR_NORMAL);
+                OLED_PrintASCIIString(65, 48, "NO", &afont16x8, OLED_COLOR_NORMAL);
             }
         }
         else
