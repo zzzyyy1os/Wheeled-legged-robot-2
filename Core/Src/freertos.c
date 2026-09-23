@@ -40,33 +40,33 @@
 
 /* M1 速度环 PID 参数 */
 #define M1_VEL_KP        0.1f
-#define M1_VEL_KI        0.1f
+#define M1_VEL_KI        0.0f
 #define M1_VEL_KD        0.0f
 #define M1_VEL_LPF_TF    0.5f
 
 /* M2 速度环 PID 参数 */
 #define M2_VEL_KP        0.1f
-#define M2_VEL_KI        0.1f
+#define M2_VEL_KI        0.0f
 #define M2_VEL_KD        0.0f
 #define M2_VEL_LPF_TF    0.5f
 
 /* M1 电流环 PID 参数 */
-#define M1_CUR_KP        3.0f
-#define M1_CUR_KI        50.0f
+#define M1_CUR_KP        6.0f
+#define M1_CUR_KI        0.0f
 #define M1_CUR_KD        0.0f
 #define M1_CUR_LPF_TF    0.02f
 
 /* M2 电流环 PID 参数 */
-#define M2_CUR_KP        3.0f
-#define M2_CUR_KI        50.0f
+#define M2_CUR_KP        6.0f
+#define M2_CUR_KI        0.0f
 #define M2_CUR_KD        0.0f
 #define M2_CUR_LPF_TF    0.02f
 
 /* 速度限制 (rad/s) */
-#define VELOCITY_LIMIT   20.0f
+#define VELOCITY_LIMIT   30.0f
 
 /* 控制模式选择: 0=速度环, 1=电流环, 2=ADC诊断, 3=速度+电流双闭环, 4=三环嵌套 */
-#define CURRENT_LOOP_TEST  3
+#define CURRENT_LOOP_TEST  1
 
 /* ========================================================================= */
 
@@ -77,8 +77,11 @@ static volatile float m1_target_velocity = 0.0f;
 static volatile float m2_target_velocity = 0.0f;
 
 /* 电流环目标 (安培) */
-static volatile float m1_target_current = 0.1f;   /* 默认0.1A */
-static volatile float m2_target_current = 0.1f;
+static volatile float m1_target_current = 0.0f;   /* 默认0A, 通过串口C/D命令设置 */
+static volatile float m2_target_current = 0.0f;
+
+/* OLED翻页 (0=电机状态, 1=PID参数) */
+static volatile uint8_t oled_page = 0;
 
 /* USER CODE END Variables */
 
@@ -365,6 +368,7 @@ void StartMotorTask(void *argument)
 
     UART_Printf("M1 cur kp:%.1f ki:%.1f\r\n", cur_m1_Kp, cur_m1_Ki);
     UART_Printf("M2 cur kp:%.1f ki:%.1f\r\n", cur_m2_Kp, cur_m2_Ki);
+    UART_Printf("Ready - Send C/D commands to control motors\r\n");
 
     for (;;)
     {
@@ -436,6 +440,7 @@ void StartUARTTask(void *argument)
                 float val = atof(cmd + 1);
                 m1_target_current = val;
                 UART_Printf("M1 cur:%.3fA\r\n", m1_target_current);
+                UART_Printf("Target currents - M1:%.3fA M2:%.3fA\r\n", m1_target_current, m2_target_current);
             }
             else if (cmd[0] == 'D' || cmd[0] == 'd')
             {
@@ -443,6 +448,7 @@ void StartUARTTask(void *argument)
                 float val = atof(cmd + 1);
                 m2_target_current = val;
                 UART_Printf("M2 cur:%.3fA\r\n", m2_target_current);
+                UART_Printf("Target currents - M1:%.3fA M2:%.3fA\r\n", m1_target_current, m2_target_current);
             }
             else
             {
@@ -468,90 +474,90 @@ void StartOLEDTask(void *argument)
     {
         OLED_NewFrame();
 
-        /* ---- 中间分隔线 ---- */
-        OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
+        if (oled_page == 0)
+        {
+            /* ========== 第1页: 电机状态 ========== */
+            OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
 
 #if (CURRENT_LOOP_TEST == 3)
-        /* ========== 速度+电流双闭环显示 ========== */
+            /* ---- 左半: M1 ---- */
+            OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
 
-        /* ---- 左半: M1 ---- */
-        OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "T:%.1f", m1_target_velocity);
+            OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "T:%.1f", m1_target_velocity);
-        OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "V:%.1f", vel_actual_speed);
+            OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "V:%.1f", vel_actual_speed);
-        OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "I:%.2f", cur_m1_actual_iq);
+            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "I:%.2f", cur_m1_actual_iq);
-        OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+            /* ---- 右半: M2 ---- */
+            OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
 
-        /* ---- 右半: M2 ---- */
-        OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "T:%.1f", m2_target_velocity);
+            OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "T:%.1f", m2_target_velocity);
-        OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "V:%.1f", vel_m2_actual_speed);
+            OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "V:%.1f", vel_m2_actual_speed);
-        OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-        sprintf(buf, "I:%.2f", cur_m2_actual_iq);
-        OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-#elif CURRENT_LOOP_TEST
-        /* ========== 电流环模式显示 ========== */
-
-        /* ---- 左半: M1 ---- */
-        OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
-
-        sprintf(buf, "T:%.3f", m1_target_current);
-        OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-        sprintf(buf, "I:%.3f", cur_m1_actual_iq);
-        OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-        sprintf(buf, "E:%.3f", m1_target_current - cur_m1_actual_iq);
-        OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-        /* ---- 右半: M2 ---- */
-        OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
-
-        sprintf(buf, "T:%.3f", m2_target_current);
-        OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-        sprintf(buf, "I:%.3f", cur_m2_actual_iq);
-        OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-        sprintf(buf, "E:%.3f", m2_target_current - cur_m2_actual_iq);
-        OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-
+            sprintf(buf, "I:%.2f", cur_m2_actual_iq);
+            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
 #else
-        /* ========== 速度环模式显示 ========== */
+            /* ---- 左半: M1 ---- */
+            OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
 
-        /* ---- 左半: M1 ---- */
-        OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "T:%.1f", m1_target_velocity);
+            OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "T:%.1f", m1_target_velocity);
-        OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "V:%.1f", vel_actual_speed);
+            OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "N:%.1f", vel_actual_speed);
-        OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "I:%.2f", cur_m1_actual_iq);
+            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "E:%.1f", m1_target_velocity - vel_actual_speed);
-        OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+            /* ---- 右半: M2 ---- */
+            OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
 
-        /* ---- 右半: M2 ---- */
-        OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "T:%.1f", m2_target_velocity);
+            OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "T:%.1f", m2_target_velocity);
-        OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "V:%.1f", vel_m2_actual_speed);
+            OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-        sprintf(buf, "N:%.1f", vel_m2_actual_speed);
-        OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-        sprintf(buf, "E:%.1f", m2_target_velocity - vel_m2_actual_speed);
-        OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+            sprintf(buf, "I:%.2f", cur_m2_actual_iq);
+            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
 #endif
+        }
+        else
+        {
+            /* ========== 第2页: PID参数 ========== */
+            OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
+
+            /* ---- 左半: 速度环PID ---- */
+            OLED_PrintASCIIString(0, 0, "VEL", &afont16x8, OLED_COLOR_NORMAL);
+
+            sprintf(buf, "P:%.3f", vel_Kp);
+            OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+            sprintf(buf, "I:%.3f", vel_Ki);
+            OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+            sprintf(buf, "D:%.3f", vel_Kd);
+            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+            /* ---- 右半: 电流环PID ---- */
+            OLED_PrintASCIIString(65, 0, "CUR", &afont16x8, OLED_COLOR_NORMAL);
+
+            sprintf(buf, "P:%.3f", cur_m1_Kp);
+            OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+            sprintf(buf, "I:%.3f", cur_m1_Ki);
+            OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+
+            sprintf(buf, "D:%.3f", cur_m1_Kd);
+            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+        }
 
         OLED_ShowFrame();
 
@@ -631,6 +637,7 @@ void StartKeyTask(void *argument)
         for (int i = 0; i < KEY_NUM; i++)
         {
             KeyEvent_t event = Key_GetEvent((KeyId_t)i);
+
             if (event == KEY_EVENT_PRESS)
             {
                 UART_Printf("KEY_%d pressed\r\n", i + 1);
@@ -642,6 +649,12 @@ void StartKeyTask(void *argument)
             else if (event == KEY_EVENT_LONG_PRESS)
             {
                 UART_Printf("KEY_%d long press\r\n", i + 1);
+
+                /* KEY_1长按: 翻页 */
+                if (i == KEY_1)
+                {
+                    oled_page ^= 1;
+                }
             }
         }
 

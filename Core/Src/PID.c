@@ -5,6 +5,7 @@
 #include "PID.h"
 
 #define LIMIT  6.3f
+#define INTEGRATOR_LIMIT 3.0f  /* 积分项限幅 */
 
 static float _constrain(float amt, float low, float high)
 {
@@ -35,7 +36,7 @@ float PID_Controller(float Kp, float Ki, float Kd, float Error)
     float proportion = Kp * Error;
 
     float intergration = Last_intergration + Ki * 0.5f * Ts * Error;
-    intergration = _constrain(intergration, -LIMIT, LIMIT);
+    intergration = _constrain(intergration, -INTEGRATOR_LIMIT, INTEGRATOR_LIMIT);  /* 积分限幅 */
 
     float differential = Kd * (Error - Last_Error) / Ts;
 
@@ -55,6 +56,8 @@ void PID_Instance_Init(PID_Instance_t *inst)
     inst->Timestamp_Last = HAL_GetTick();
     inst->Last_Error = 0.0f;
     inst->Last_intergration = 0.0f;
+    inst->Integrator_Min = -INTEGRATOR_LIMIT;
+    inst->Integrator_Max = INTEGRATOR_LIMIT;
     inst->initialized = 1;
 }
 
@@ -70,6 +73,8 @@ float PID_Instance_Controller(PID_Instance_t *inst, float Kp, float Ki, float Kd
     if (!inst->initialized)
     {
         inst->Timestamp_Last = HAL_GetTick();
+        inst->Integrator_Min = -INTEGRATOR_LIMIT;
+        inst->Integrator_Max = INTEGRATOR_LIMIT;
         inst->initialized = 1;
     }
 
@@ -82,7 +87,7 @@ float PID_Instance_Controller(PID_Instance_t *inst, float Kp, float Ki, float Kd
     float proportion = Kp * Error;
 
     float intergration = inst->Last_intergration + Ki * 0.5f * Ts * Error;
-    intergration = _constrain(intergration, -LIMIT, LIMIT);
+    intergration = _constrain(intergration, inst->Integrator_Min, inst->Integrator_Max);  /* 积分限幅 */
 
     float differential = Kd * (Error - inst->Last_Error) / Ts;
 

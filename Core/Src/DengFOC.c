@@ -214,6 +214,8 @@ void alignSensor_M2(void)
 
     setPhaseVoltage_M2(0, 0, 0);
     HAL_Delay(500);
+
+    AS5600_M2_Init();
 }
 
 /* M2速度闭环初始化 */
@@ -221,6 +223,11 @@ void velocityClosedloop_M2_Init(void)
 {
     vel_m2_actual_speed = 0.0f;
     PID_Instance_Init(&m2_pid_inst);
+
+    /* 设置速度环的积分限幅值 */
+    m2_pid_inst.Integrator_Min = -2.0f;
+    m2_pid_inst.Integrator_Max = 2.0f;
+
     LPF_Instance_Init(&m2_lpf_inst);
 }
 
@@ -271,9 +278,10 @@ static LPF_Instance_t m2_cur_lpf_inst;
  * gain_sign: 控制电流反馈极性, +1或-1
  * 如果电流环导致电机来回震荡, 说明极性反了, 需要把gain_sign取反
  * M1和M2的极性可能不同(取决于硬件接线), 需要分别调试
+ * 如果电机飞车/震荡, 把gain_sign取反
  */
-static Current_Sensor_t current_sensor_m1 = { .Sen_Num = 0, .gain_sign = 1.0f };
-static Current_Sensor_t current_sensor_m2 = { .Sen_Num = 1, .gain_sign = -1.0f };
+static Current_Sensor_t current_sensor_m1 = { .Sen_Num = 0, .gain_sign = -1.0f };
+static Current_Sensor_t current_sensor_m2 = { .Sen_Num = 1, .gain_sign = 1.0f };
 
 /******************************************************************
  * Clarke + Park 变换: Ia, Ib, θe → Iq
@@ -300,6 +308,11 @@ void currentClosedloop_M1_Init(void)
 {
     cur_m1_actual_iq = 0.0f;
     PID_Instance_Init(&m1_cur_pid_inst);
+
+    /* 设置电流环的积分限幅值 */
+    m1_cur_pid_inst.Integrator_Min = -1.5f;
+    m1_cur_pid_inst.Integrator_Max = 1.5f;
+
     LPF_Instance_Init(&m1_cur_lpf_inst);
 
     /* 初始化电流传感器 (校准偏移, 电机必须静止!) */
@@ -317,6 +330,13 @@ void currentClosedloop_M1_Init(void)
  ******************************************************************/
 float currentClosedloop_M1(float target_iq)
 {
+    /* 添加死区处理：小电流时避免振荡 */
+    float dead_zone = 0.005f;  // 5mA死区
+    if (fabsf(target_iq) < dead_zone)
+    {
+        target_iq = 0.0f;
+    }
+
     /* 目标为0时重置PID/LPF, 防止累积导致电机不停 */
     if (target_iq == 0.0f)
     {
@@ -327,7 +347,7 @@ float currentClosedloop_M1(float target_iq)
         return 0.0f;
     }
 
-    /* 1. 读取相电流 */
+    /* 1. 读取相电流 (由于gain_sign=-1.0f，此时电流是反向的) */
     GetPhaseCurrent(&current_sensor_m1);
 
     /* 2. Clarke+Park变换 → Iq */
@@ -338,15 +358,21 @@ float currentClosedloop_M1(float target_iq)
     /* 3. 低通滤波 */
     float Iq_filtered = Lowpassfilter_Instance(&m1_cur_lpf_inst, cur_m1_LPF_Tf, Iq_raw);
 
-    /* 4. PID控制 */
+    /* 4. 计算误差 - M1电流反馈方向是反的，需要修正 */
+    /* 由于M1的gain_sign = -1.0f，Iq_filtered是反向的 */
+    float corrected_Iq_filtered = -Iq_filtered;  // 反转M1反馈信号
+    float error = target_iq - corrected_Iq_filtered;
+
+    /* 5. PID控制 */
     float Uq = PID_Instance_Controller(&m1_cur_pid_inst,
                                         cur_m1_Kp, cur_m1_Ki, cur_m1_Kd,
-                                        target_iq - Iq_filtered);
+                                        error);
 
-    /* 5. 设置电压 */
+    /* 7. 设置电压 */
     setPhaseVoltage(Uq, 0, getElectricalAngle());
 
-    cur_m1_actual_iq = Iq_filtered;
+    /* 存储修正后的反馈值用于显示，使其符号与目标一致 */
+    cur_m1_actual_iq = corrected_Iq_filtered;
     return Uq;
 }
 
@@ -357,6 +383,11 @@ void currentClosedloop_M2_Init(void)
 {
     cur_m2_actual_iq = 0.0f;
     PID_Instance_Init(&m2_cur_pid_inst);
+
+    /* 设置电流环的积分限幅值 */
+    m2_cur_pid_inst.Integrator_Min = -1.5f;
+    m2_cur_pid_inst.Integrator_Max = 1.5f;
+
     LPF_Instance_Init(&m2_cur_lpf_inst);
 
     CurrSense_Init(&current_sensor_m2);
@@ -371,6 +402,13 @@ void currentClosedloop_M2_Init(void)
  ******************************************************************/
 float currentClosedloop_M2(float target_iq)
 {
+    /* 添加死区处理：小电流时避免振荡 */
+    float dead_zone = 0.005f;  // 5mA死区
+    if (fabsf(target_iq) < dead_zone)
+    {
+        target_iq = 0.0f;
+    }
+
     /* 目标为0时重置PID/LPF, 防止累积导致电机不停 */
     if (target_iq == 0.0f)
     {
@@ -389,13 +427,16 @@ float currentClosedloop_M2(float target_iq)
 
     float Iq_filtered = Lowpassfilter_Instance(&m2_cur_lpf_inst, cur_m2_LPF_Tf, Iq_raw);
 
+    /* M2使用正常的反馈信号处理 */
+    float error = target_iq - Iq_filtered;
+
     float Uq = PID_Instance_Controller(&m2_cur_pid_inst,
                                         cur_m2_Kp, cur_m2_Ki, cur_m2_Kd,
-                                        target_iq - Iq_filtered);
+                                        error);
 
     setPhaseVoltage_M2(Uq, 0, getElectricalAngle_M2());
 
-    cur_m2_actual_iq = Iq_filtered;
+    cur_m2_actual_iq = Iq_filtered;  // M2显示原始反馈值
     return Uq;
 }
 
@@ -421,6 +462,11 @@ void velocityCurrentClosedloop_M1_Init(void)
 {
     vel_actual_speed = 0.0f;
     PID_Instance_Init(&m1_vel_pid_inst);
+
+    /* 设置M1速度环的积分限幅值 */
+    m1_vel_pid_inst.Integrator_Min = -2.0f;
+    m1_vel_pid_inst.Integrator_Max = 2.0f;
+
     LPF_Instance_Init(&m1_vel_lpf_inst);
     currentClosedloop_M1_Init();
 }
@@ -466,6 +512,11 @@ void velocityCurrentClosedloop_M2_Init(void)
 {
     vel_m2_actual_speed = 0.0f;
     PID_Instance_Init(&m2_vel_pid_inst);
+
+    /* 设置M2速度环的积分限幅值 */
+    m2_vel_pid_inst.Integrator_Min = -2.0f;
+    m2_vel_pid_inst.Integrator_Max = 2.0f;
+
     LPF_Instance_Init(&m2_vel_lpf_inst);
     currentClosedloop_M2_Init();
 }

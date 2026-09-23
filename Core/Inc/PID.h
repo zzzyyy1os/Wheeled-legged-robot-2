@@ -19,6 +19,8 @@ typedef struct {
     float    Last_Error;
     float    Last_intergration;
     uint8_t  initialized;
+    float    Integrator_Min;  /* 积分限幅下限 */
+    float    Integrator_Max;  /* 积分限幅上限 */
 } PID_Instance_t;
 
 void PID_Instance_Init(PID_Instance_t *inst);
