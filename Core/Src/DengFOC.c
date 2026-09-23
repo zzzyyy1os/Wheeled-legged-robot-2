@@ -280,7 +280,7 @@ static LPF_Instance_t m2_cur_lpf_inst;
  * M1和M2的极性可能不同(取决于硬件接线), 需要分别调试
  * 如果电机飞车/震荡, 把gain_sign取反
  */
-static Current_Sensor_t current_sensor_m1 = { .Sen_Num = 0, .gain_sign = -1.0f };
+static Current_Sensor_t current_sensor_m1 = { .Sen_Num = 0, .gain_sign = 1.0f };
 static Current_Sensor_t current_sensor_m2 = { .Sen_Num = 1, .gain_sign = 1.0f };
 
 /******************************************************************
@@ -347,7 +347,7 @@ float currentClosedloop_M1(float target_iq)
         return 0.0f;
     }
 
-    /* 1. 读取相电流 (由于gain_sign=-1.0f，此时电流是反向的) */
+    /* 1. 读取相电流 */
     GetPhaseCurrent(&current_sensor_m1);
 
     /* 2. Clarke+Park变换 → Iq */
@@ -358,10 +358,9 @@ float currentClosedloop_M1(float target_iq)
     /* 3. 低通滤波 */
     float Iq_filtered = Lowpassfilter_Instance(&m1_cur_lpf_inst, cur_m1_LPF_Tf, Iq_raw);
 
-    /* 4. 计算误差 - M1电流反馈方向是反的，需要修正 */
-    /* 由于M1的gain_sign = -1.0f，Iq_filtered是反向的 */
-    float corrected_Iq_filtered = -Iq_filtered;  // 反转M1反馈信号
-    float error = target_iq - corrected_Iq_filtered;
+    /* 4. 计算误差 - 根据传感器增益符号调整反馈方向 */
+    /* 由于gain_sign设置为-1.0f，反馈信号已经取反，所以直接使用 */
+    float error = target_iq - Iq_filtered;
 
     /* 5. PID控制 */
     float Uq = PID_Instance_Controller(&m1_cur_pid_inst,
@@ -371,8 +370,8 @@ float currentClosedloop_M1(float target_iq)
     /* 7. 设置电压 */
     setPhaseVoltage(Uq, 0, getElectricalAngle());
 
-    /* 存储修正后的反馈值用于显示，使其符号与目标一致 */
-    cur_m1_actual_iq = corrected_Iq_filtered;
+    /* 存储原始反馈值用于显示，与控制逻辑一致 */
+    cur_m1_actual_iq = Iq_filtered;
     return Uq;
 }
 
@@ -427,10 +426,8 @@ float currentClosedloop_M2(float target_iq)
 
     float Iq_filtered = Lowpassfilter_Instance(&m2_cur_lpf_inst, cur_m2_LPF_Tf, Iq_raw);
 
-    /* 修正M2的反馈方向问题 - 如果实际反馈方向也需要修正 */
-    /* 根据实际反馈情况，可能也需要修正M2的反馈信号 */
-    float corrected_Iq_filtered = Iq_filtered;  // M2可能不需要反向，但根据需要调整
-    float error = target_iq - corrected_Iq_filtered;
+    /* M2使用正常的反馈信号处理 - 根据实际运行情况，M2方向是正确的 */
+    float error = target_iq - Iq_filtered;
 
     float Uq = PID_Instance_Controller(&m2_cur_pid_inst,
                                         cur_m2_Kp, cur_m2_Ki, cur_m2_Kd,
@@ -438,7 +435,8 @@ float currentClosedloop_M2(float target_iq)
 
     setPhaseVoltage_M2(Uq, 0, getElectricalAngle_M2());
 
-    cur_m2_actual_iq = corrected_Iq_filtered;  // 使用修正后的值
+    /* M2的显示值保持原始反馈值，以确保与控制逻辑一致 */
+    cur_m2_actual_iq = Iq_filtered;
     return Uq;
 }
 
