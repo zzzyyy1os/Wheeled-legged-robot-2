@@ -344,31 +344,17 @@ void StartMotorTask(void *argument)
 
 #elif CURRENT_LOOP_TEST
     /* ========== 电流环测试模式 ========== */
-    UART_SendString("=== CURRENT LOOP MODE ===\r\n");
-
     if (!ADC_Is_Started())
     {
-        UART_SendString("ADC not started, init now...\r\n");
         ADC_Current_Init();
     }
     HAL_Delay(100);
-    UART_Printf("ADC buf: %u %u %u %u\r\n",
-        adc_dma_buf[0], adc_dma_buf[1], adc_dma_buf[2], adc_dma_buf[3]);
 
     cur_m1_Kp = M1_CUR_KP; cur_m1_Ki = M1_CUR_KI; cur_m1_Kd = M1_CUR_KD; cur_m1_LPF_Tf = M1_CUR_LPF_TF;
     cur_m2_Kp = M2_CUR_KP; cur_m2_Ki = M2_CUR_KI; cur_m2_Kd = M2_CUR_KD; cur_m2_LPF_Tf = M2_CUR_LPF_TF;
 
-    UART_SendString("Calibrate M1 current (gain=-1)...\r\n");
     currentClosedloop_M1_Init();
-    UART_Printf("M1 offset: %.4fV %.4fV\r\n", cur_m1_offset_ia, cur_m1_offset_ib);
-
-    UART_SendString("Calibrate M2 current (gain=+1)...\r\n");
     currentClosedloop_M2_Init();
-    UART_Printf("M2 offset: %.4fV %.4fV\r\n", cur_m2_offset_ia, cur_m2_offset_ib);
-
-    UART_Printf("M1 cur kp:%.1f ki:%.1f\r\n", cur_m1_Kp, cur_m1_Ki);
-    UART_Printf("M2 cur kp:%.1f ki:%.1f\r\n", cur_m2_Kp, cur_m2_Ki);
-    UART_Printf("Ready - Send C/D commands to control motors\r\n");
 
     for (;;)
     {
@@ -479,55 +465,35 @@ void StartOLEDTask(void *argument)
             /* ========== 第1页: 电机状态 ========== */
             OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
 
-#if (CURRENT_LOOP_TEST == 3)
             /* ---- 左半: M1 ---- */
             OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "T:%.1f", m1_target_velocity);
+            sprintf(buf, "S:%.2f", vel_actual_speed);
             OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "V:%.1f", vel_actual_speed);
+            sprintf(buf, "I:%.3f", cur_m1_actual_iq);
             OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "I:%.2f", cur_m1_actual_iq);
-            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
+            if (as5600_ready) {
+                OLED_PrintASCIIString(0, 48, "OK", &afont16x8, OLED_COLOR_NORMAL);
+            } else {
+                OLED_PrintASCIIString(0, 48, "ER", &afont16x8, OLED_COLOR_NORMAL);
+            }
 
             /* ---- 右半: M2 ---- */
             OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "T:%.1f", m2_target_velocity);
+            sprintf(buf, "S:%.2f", vel_m2_actual_speed);
             OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "V:%.1f", vel_m2_actual_speed);
+            sprintf(buf, "I:%.3f", cur_m2_actual_iq);
             OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "I:%.2f", cur_m2_actual_iq);
-            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-#else
-            /* ---- 左半: M1 ---- */
-            OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "T:%.1f", m1_target_velocity);
-            OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "V:%.1f", vel_actual_speed);
-            OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "I:%.2f", cur_m1_actual_iq);
-            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            /* ---- 右半: M2 ---- */
-            OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "T:%.1f", m2_target_velocity);
-            OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "V:%.1f", vel_m2_actual_speed);
-            OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "I:%.2f", cur_m2_actual_iq);
-            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-#endif
+            if (as5600_m2_ready) {
+                OLED_PrintASCIIString(65, 48, "OK", &afont16x8, OLED_COLOR_NORMAL);
+            } else {
+                OLED_PrintASCIIString(65, 48, "ER", &afont16x8, OLED_COLOR_NORMAL);
+            }
         }
         else
         {
