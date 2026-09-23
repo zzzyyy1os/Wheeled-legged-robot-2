@@ -60,7 +60,6 @@ extern DMA_HandleTypeDef hdma_usart1_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern UART_HandleTypeDef huart1;
 extern TIM_HandleTypeDef htim14;
-extern SPI_HandleTypeDef hspi2;
 
 /* USER CODE BEGIN EV */
 
@@ -221,14 +220,6 @@ void DMA2_Stream7_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
-/**
-  * @brief This function handles SPI2 global interrupt.
-  */
-void SPI2_IRQHandler(void)
-{
-    HAL_SPI_IRQHandler(&hspi2);
-}
 
 /**
   * @brief This function handles I2C2 event interrupt.

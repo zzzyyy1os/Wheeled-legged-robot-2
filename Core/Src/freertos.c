@@ -8,6 +8,7 @@
   *                      - MotorTask:     M1+M2速度闭环控制
   *                      - OLEDTask:      分屏显示双电机参数
   *                      - UARTTask:      串口DMA接收A/B命令
+  *                      - KeyTask:       按键检测 (PA0/PB0/PB1)
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -28,6 +29,7 @@
 #include "uart_comm.h"
 #include "OLED.h"
 #include "adc_current.h"
+#include "key.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -130,6 +132,14 @@ const osThreadAttr_t ADCTestTask_attributes = {
   .priority = (osPriority_t) osPriorityLow,
 };
 
+/* 按键检测任务 */
+osThreadId_t KeyTaskHandle;
+const osThreadAttr_t KeyTask_attributes = {
+  .name = "KeyTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+
 /* Function prototypes */
 void StartAS5600Task(void *argument);
 void StartAS5600M2Task(void *argument);
@@ -137,6 +147,7 @@ void StartMotorTask(void *argument);
 void StartOLEDTask(void *argument);
 void StartUARTTask(void *argument);
 void StartADCTestTask(void *argument);
+void StartKeyTask(void *argument);
 
 /* USER CODE BEGIN Init */
 /* USER CODE END Init */
@@ -151,6 +162,7 @@ void MX_FREERTOS_Init(void) {
   UARTTaskHandle     = osThreadNew(StartUARTTask,     NULL, &UARTTask_attributes);
   OLEDTaskHandle     = osThreadNew(StartOLEDTask,     NULL, &OLEDTask_attributes);
   ADCTestTaskHandle  = osThreadNew(StartADCTestTask,  NULL, &ADCTestTask_attributes);
+  KeyTaskHandle      = osThreadNew(StartKeyTask,       NULL, &KeyTask_attributes);
 
   UART_Comm_Init();
 
@@ -601,5 +613,40 @@ void StartADCTestTask(void *argument)
             adc_dma_buf[2], adc_dma_buf[3]);
 #endif
         osDelay(1000);
+    }
+}
+
+/*============================================================================
+ * KeyTask - 按键检测任务 (10ms 周期)
+ *   检测 PA0, PB0, PB1 三个按键
+ *   功能待定, 当前仅打印按键事件
+ *============================================================================*/
+void StartKeyTask(void *argument)
+{
+    Key_Init();
+    UART_SendString("KeyTask started\r\n");
+
+    for (;;)
+    {
+        Key_Scan();
+
+        for (int i = 0; i < KEY_NUM; i++)
+        {
+            KeyEvent_t event = Key_GetEvent((KeyId_t)i);
+            if (event == KEY_EVENT_PRESS)
+            {
+                UART_Printf("KEY_%d pressed\r\n", i + 1);
+            }
+            else if (event == KEY_EVENT_RELEASE)
+            {
+                UART_Printf("KEY_%d released\r\n", i + 1);
+            }
+            else if (event == KEY_EVENT_LONG_PRESS)
+            {
+                UART_Printf("KEY_%d long press\r\n", i + 1);
+            }
+        }
+
+        osDelay(10);
     }
 }
