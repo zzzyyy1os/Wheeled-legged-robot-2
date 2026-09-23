@@ -427,8 +427,10 @@ float currentClosedloop_M2(float target_iq)
 
     float Iq_filtered = Lowpassfilter_Instance(&m2_cur_lpf_inst, cur_m2_LPF_Tf, Iq_raw);
 
-    /* M2使用正常的反馈信号处理 */
-    float error = target_iq - Iq_filtered;
+    /* 修正M2的反馈方向问题 - 如果实际反馈方向也需要修正 */
+    /* 根据实际反馈情况，可能也需要修正M2的反馈信号 */
+    float corrected_Iq_filtered = Iq_filtered;  // M2可能不需要反向，但根据需要调整
+    float error = target_iq - corrected_Iq_filtered;
 
     float Uq = PID_Instance_Controller(&m2_cur_pid_inst,
                                         cur_m2_Kp, cur_m2_Ki, cur_m2_Kd,
@@ -436,7 +438,7 @@ float currentClosedloop_M2(float target_iq)
 
     setPhaseVoltage_M2(Uq, 0, getElectricalAngle_M2());
 
-    cur_m2_actual_iq = Iq_filtered;  // M2显示原始反馈值
+    cur_m2_actual_iq = corrected_Iq_filtered;  // 使用修正后的值
     return Uq;
 }
 

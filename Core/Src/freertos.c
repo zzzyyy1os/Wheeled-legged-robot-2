@@ -261,7 +261,7 @@ void StartMotorTask(void *argument)
     /* ---- 关键: 对齐后停止所有PWM输出, 等待电流降为0 ---- */
     setPhaseVoltage(0, 0, 0);
     setPhaseVoltage_M2(0, 0, 0);
-    osDelay(200);  /* 等待200ms让电机完全静止 - 从1秒减少到200ms */
+    osDelay(500);  /* 等待500ms让电机完全静止 - 恢复一个较为安全的延时 */
 
     /* 设置系统就绪标志并发送就绪通知 */
     system_ready = 1;
@@ -305,7 +305,7 @@ void StartMotorTask(void *argument)
     {
         ADC_Current_Init();
     }
-    HAL_Delay(50);  /* 从100ms减少到50ms */
+    HAL_Delay(100);  /* 确保ADC有稳定时间，恢复到100ms */
 
     cur_m1_Kp = M1_CUR_KP; cur_m1_Ki = M1_CUR_KI; cur_m1_Kd = M1_CUR_KD; cur_m1_LPF_Tf = M1_CUR_LPF_TF;
     cur_m2_Kp = M2_CUR_KP; cur_m2_Ki = M2_CUR_KI; cur_m2_Kd = M2_CUR_KD; cur_m2_LPF_Tf = M2_CUR_LPF_TF;
