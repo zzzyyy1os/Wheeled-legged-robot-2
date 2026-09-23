@@ -263,12 +263,8 @@ void StartMotorTask(void *argument)
     setPhaseVoltage_M2(0, 0, 0);
     osDelay(1000);  /* 等待1秒让电机完全静止 */
 
-    /* 设置系统就绪标志并发送串口消息 */
+    /* 设置系统就绪标志并发送就绪通知 */
     system_ready = 1;
-    UART_SendString("ALL OK\r\n");
-
-    /* 等待3秒后再发送一次ALL OK */
-    osDelay(3000);
     UART_SendString("ALL OK\r\n");
 
 #if (CURRENT_LOOP_TEST == 2)
@@ -389,7 +385,7 @@ void StartUARTTask(void *argument)
             }
             else
             {
-                UART_SendString("ERR: A/B(vel) C/D(cur)\r\n");
+                // 不发送错误信息
             }
         }
     }
@@ -425,7 +421,8 @@ void StartOLEDTask(void *argument)
             sprintf(buf, "I:%.3f", cur_m1_actual_iq);
             OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            /* 最后一行不显示任何内容 */
+            // 清空最后一行，不再显示任何内容
+            OLED_PrintASCIIString(0, 48, "  ", &afont16x8, OLED_COLOR_NORMAL);
 
             /* ---- 右半: M2 ---- */
             OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
@@ -436,7 +433,8 @@ void StartOLEDTask(void *argument)
             sprintf(buf, "I:%.3f", cur_m2_actual_iq);
             OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            /* 最后一行不显示任何内容 */
+            // 清空最后一行，不再显示任何内容
+            OLED_PrintASCIIString(65, 48, "  ", &afont16x8, OLED_COLOR_NORMAL);
         }
         else
         {
