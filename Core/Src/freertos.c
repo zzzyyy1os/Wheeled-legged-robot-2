@@ -267,6 +267,10 @@ void StartMotorTask(void *argument)
     system_ready = 1;
     UART_SendString("ALL OK\r\n");
 
+    /* 等待3秒后再发送一次ALL OK */
+    osDelay(3000);
+    UART_SendString("ALL OK\r\n");
+
 #if (CURRENT_LOOP_TEST == 2)
     /* ========== 纯ADC诊断模式 (不运行电流环) ========== */
 
