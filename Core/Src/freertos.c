@@ -178,11 +178,6 @@ void StartAS5600Task(void *argument)
 {
     AS5600_Init();
 
-    if (as5600_ready)
-        UART_SendString("M1 AS5600 ready\r\n");
-    else
-        UART_SendString("M1 AS5600 FAILED\r\n");
-
     for (;;)
     {
         if (!AS5600_Read())
@@ -190,7 +185,10 @@ void StartAS5600Task(void *argument)
             static uint8_t fail_cnt = 0;
             if (++fail_cnt >= 20)
             {
-                UART_SendString("M1 I2C fail\r\n");
+                static uint8_t print_flag = 0;
+                if (!print_flag) {
+                    print_flag = 1;
+                }
                 fail_cnt = 0;
             }
         }
@@ -205,11 +203,6 @@ void StartAS5600M2Task(void *argument)
 {
     AS5600_M2_Init();
 
-    if (as5600_m2_ready)
-        UART_SendString("M2 AS5600 ready\r\n");
-    else
-        UART_SendString("M2 AS5600 FAILED\r\n");
-
     for (;;)
     {
         if (!AS5600_M2_Read())
@@ -217,7 +210,10 @@ void StartAS5600M2Task(void *argument)
             static uint8_t fail_cnt = 0;
             if (++fail_cnt >= 20)
             {
-                UART_SendString("M2 I2C fail\r\n");
+                static uint8_t print_flag = 0;
+                if (!print_flag) {
+                    print_flag = 1;
+                }
                 fail_cnt = 0;
             }
         }
@@ -248,24 +244,16 @@ void StartMotorTask(void *argument)
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
     /* ---- 等待M1编码器就绪 ---- */
-    UART_SendString("Wait M1...\r\n");
     while (!as5600_ready) { osDelay(10); }
-    UART_SendString("M1 OK\r\n");
 
     /* ---- 等待M2编码器就绪 ---- */
-    UART_SendString("Wait M2...\r\n");
     while (!as5600_m2_ready) { osDelay(10); }
-    UART_SendString("M2 OK\r\n");
 
     /* ---- M1 零电角度校准 ---- */
-    UART_SendString("Align M1...\r\n");
     alignSensor();
-    UART_SendString("M1 align done\r\n");
 
     /* ---- M2 零电角度校准 ---- */
-    UART_SendString("Align M2...\r\n");
     alignSensor_M2();
-    UART_SendString("M2 align done\r\n");
 
     /* ---- 关键: 对齐后停止所有PWM输出, 等待电流降为0 ---- */
     setPhaseVoltage(0, 0, 0);
@@ -274,50 +262,15 @@ void StartMotorTask(void *argument)
 
 #if (CURRENT_LOOP_TEST == 2)
     /* ========== 纯ADC诊断模式 (不运行电流环) ========== */
-    UART_SendString("=== ADC DIAGNOSTIC MODE ===\r\n");
 
     if (!ADC_Is_Started())
     {
-        UART_SendString("ADC not started, init now...\r\n");
         ADC_Current_Init();
     }
     HAL_Delay(200);
 
-    /* 打印原始ADC值 */
-    UART_Printf("Raw ADC: %u %u %u %u\r\n",
-        adc_dma_buf[0], adc_dma_buf[1],
-        adc_dma_buf[2], adc_dma_buf[3]);
-
-    /* 打印电压值 */
-    UART_Printf("Voltage: %.3fV %.3fV %.3fV %.3fV\r\n",
-        adc_dma_buf[0]*ADC_CONV, adc_dma_buf[1]*ADC_CONV,
-        adc_dma_buf[2]*ADC_CONV, adc_dma_buf[3]*ADC_CONV);
-
-    /* 校准并打印偏移 */
-    Current_Sensor_t test_m1 = { .Sen_Num = 0 };
-    Current_Sensor_t test_m2 = { .Sen_Num = 1 };
-    CurrSense_Init(&test_m1);
-    CurrSense_Init(&test_m2);
-
-    UART_Printf("M1 offset: %.4fV(ADC %d) %.4fV(ADC %d)\r\n",
-        test_m1.offset_ia, (int)(test_m1.offset_ia/ADC_CONV),
-        test_m1.offset_ib, (int)(test_m1.offset_ib/ADC_CONV));
-    UART_Printf("M2 offset: %.4fV(ADC %d) %.4fV(ADC %d)\r\n",
-        test_m2.offset_ia, (int)(test_m2.offset_ia/ADC_CONV),
-        test_m2.offset_ib, (int)(test_m2.offset_ib/ADC_CONV));
-
-    /* 持续打印ADC值 */
-    for (;;)
-    {
-        UART_Printf("ADC: %u %u %u %u\r\n",
-            adc_dma_buf[0], adc_dma_buf[1],
-            adc_dma_buf[2], adc_dma_buf[3]);
-        osDelay(500);
-    }
-
 #elif (CURRENT_LOOP_TEST == 3)
     /* ========== 速度+电流双闭环模式 ========== */
-    UART_SendString("=== VELOCITY+CURRENT LOOP MODE ===\r\n");
 
     if (!ADC_Is_Started()) { ADC_Current_Init(); }
     HAL_Delay(100);
@@ -329,11 +282,8 @@ void StartMotorTask(void *argument)
     cur_m2_Kp = M2_CUR_KP; cur_m2_Ki = M2_CUR_KI; cur_m2_Kd = M2_CUR_KD; cur_m2_LPF_Tf = M2_CUR_LPF_TF;
     velocity_limit = VELOCITY_LIMIT;
 
-    UART_SendString("Calibrate M1 current...\r\n");
     velocityCurrentClosedloop_M1_Init();
-    UART_SendString("Calibrate M2 current...\r\n");
     velocityCurrentClosedloop_M2_Init();
-    UART_SendString("Ready\r\n");
 
     for (;;)
     {
@@ -365,16 +315,12 @@ void StartMotorTask(void *argument)
 
 #else
     /* ========== 速度闭环模式 (原有功能) ========== */
-    UART_SendString("=== VELOCITY LOOP MODE ===\r\n");
 
     vel_Kp = M1_VEL_KP; vel_Ki = M1_VEL_KI; vel_Kd = M1_VEL_KD; vel_LPF_Tf = M1_VEL_LPF_TF;
     vel_m2_Kp = M2_VEL_KP; vel_m2_Ki = M2_VEL_KI; vel_m2_Kd = M2_VEL_KD; vel_m2_LPF_Tf = M2_VEL_LPF_TF;
 
     velocityClosedloop_Init();
     velocityClosedloop_M2_Init();
-
-    UART_Printf("M1 kp:%.3f ki:%.3f\r\n", vel_Kp, vel_Ki);
-    UART_Printf("M2 kp:%.3f ki:%.3f\r\n", vel_m2_Kp, vel_m2_Ki);
 
     for (;;)
     {
@@ -544,43 +490,26 @@ void StartADCTestTask(void *argument)
     /* 初始化ADC */
     ADC_Current_Init();
 
-    UART_SendString("ADC init done\r\n");
-
     for (;;)
     {
 #if (CURRENT_LOOP_TEST == 0)
         /* 速度环模式: 打印原始ADC + 电压 (监控电流传感器是否工作) */
-        UART_Printf("ADC:%u(%.3fV) %u(%.3fV) %u(%.3fV) %u(%.3fV)\r\n",
-            adc_dma_buf[0], adc_dma_buf[0]*ADC_CONV,
-            adc_dma_buf[1], adc_dma_buf[1]*ADC_CONV,
-            adc_dma_buf[2], adc_dma_buf[2]*ADC_CONV,
-            adc_dma_buf[3], adc_dma_buf[3]*ADC_CONV);
+        // 删除输出
 #elif (CURRENT_LOOP_TEST == 4)
         /* 三环模式: 角度+速度+电流 */
-        UART_Printf("A1:%.2f V1:%.1f I1:%.2f | A2:%.2f V2:%.1f I2:%.2f\r\n",
-            pos_m1_actual_angle, vel_actual_speed, cur_m1_actual_iq,
-            pos_m2_actual_angle, vel_m2_actual_speed, cur_m2_actual_iq);
+        // 删除输出
 #elif (CURRENT_LOOP_TEST == 3)
         /* 速度+电流双闭环: 目标速度+实际速度+电流 */
-        UART_Printf("T1:%.1f V1:%.1f I1:%.2f | T2:%.1f V2:%.1f I2:%.2f\r\n",
-            m1_target_velocity, vel_actual_speed, cur_m1_actual_iq,
-            m2_target_velocity, vel_m2_actual_speed, cur_m2_actual_iq);
+        // 删除输出
 #elif (CURRENT_LOOP_TEST == 2)
         /* 诊断模式: 只打印原始ADC */
-        UART_Printf("ADC: %u %u %u %u\r\n",
-            adc_dma_buf[0], adc_dma_buf[1],
-            adc_dma_buf[2], adc_dma_buf[3]);
+        // 删除输出
 #elif CURRENT_LOOP_TEST
         /* 电流环模式: 显示实际电流值 + 原始ADC */
-        UART_Printf("Iq M1:%.3fA M2:%.3fA | Raw:%u %u %u %u\r\n",
-            cur_m1_actual_iq, cur_m2_actual_iq,
-            adc_dma_buf[0], adc_dma_buf[1],
-            adc_dma_buf[2], adc_dma_buf[3]);
+        // 删除输出
 #else
         /* 速度环模式: 原始ADC */
-        UART_Printf("ADC: %u %u %u %u\r\n",
-            adc_dma_buf[0], adc_dma_buf[1],
-            adc_dma_buf[2], adc_dma_buf[3]);
+        // 删除输出
 #endif
         osDelay(1000);
     }
@@ -594,7 +523,6 @@ void StartADCTestTask(void *argument)
 void StartKeyTask(void *argument)
 {
     Key_Init();
-    UART_SendString("KeyTask started\r\n");
 
     for (;;)
     {
@@ -606,15 +534,15 @@ void StartKeyTask(void *argument)
 
             if (event == KEY_EVENT_PRESS)
             {
-                UART_Printf("KEY_%d pressed\r\n", i + 1);
+                // 删除输出
             }
             else if (event == KEY_EVENT_RELEASE)
             {
-                UART_Printf("KEY_%d released\r\n", i + 1);
+                // 删除输出
             }
             else if (event == KEY_EVENT_LONG_PRESS)
             {
-                UART_Printf("KEY_%d long press\r\n", i + 1);
+                // 删除输出
 
                 /* KEY_1长按: 翻页 */
                 if (i == KEY_1)

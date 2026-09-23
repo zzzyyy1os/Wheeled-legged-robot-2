@@ -90,14 +90,10 @@ void ADC_Current_Init(void)
     HAL_ADC_Stop(&my_hadc);
     my_hadc.Instance->CR2 |= (1U << 2);   /* 启动校准 */
     while (my_hadc.Instance->CR2 & (1U << 2)) {}  /* 等待校准完成 */
-    UART_Printf("ADC calibration done\r\n");
 
     /* ---- 启动 ---- */
     HAL_ADC_Start_DMA(&my_hadc, (uint32_t *)adc_dma_buf, ADC_CHANNELS);
     adc_started = 1;
-
-    UART_Printf("ADC1 started, DMA buf[0-3]=%u %u %u %u\r\n",
-        adc_dma_buf[0], adc_dma_buf[1], adc_dma_buf[2], adc_dma_buf[3]);
 }
 
 /******************************************************************
@@ -114,12 +110,6 @@ static void DriftOffsets(Current_Sensor_t *sensor)
     int idx_a = (sensor->Sen_Num == 0) ? 0 : 2;
     int idx_b = idx_a + 1;
 
-    /* 打印初始ADC原始值 */
-    UART_Printf("Calib M%d: ADC raw [%u %u %u %u]\r\n",
-        sensor->Sen_Num + 1,
-        adc_dma_buf[0], adc_dma_buf[1],
-        adc_dma_buf[2], adc_dma_buf[3]);
-
     /* 多次采样取平均 */
     for (int i = 0; i < detect_rounds; i++)
     {
@@ -130,13 +120,6 @@ static void DriftOffsets(Current_Sensor_t *sensor)
 
     sensor->offset_ia = sum_ia / detect_rounds;
     sensor->offset_ib = sum_ib / detect_rounds;
-
-    /* 打印详细的校准结果 */
-    UART_Printf("Calib M%d: avg_ia=%.4fV(%d) avg_ib=%.4fV(%d) gain=%.0f\r\n",
-        sensor->Sen_Num + 1,
-        sensor->offset_ia, (int)(sensor->offset_ia / ADC_CONV),
-        sensor->offset_ib, (int)(sensor->offset_ib / ADC_CONV),
-        sensor->gain_sign);
 }
 
 /******************************************************************
