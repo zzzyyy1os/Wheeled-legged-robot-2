@@ -86,6 +86,9 @@ static volatile uint8_t oled_page = 0;
 /* 系统就绪标志 */
 static volatile uint8_t system_ready = 0;
 
+/* 系统启动时间 (毫秒) */
+static volatile uint32_t system_start_ms = 0;
+
 /* USER CODE END Variables */
 
 /* Definitions for AS5600Task (M1) */
@@ -158,6 +161,8 @@ void StartKeyTask(void *argument);
 
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
+  /* 记录系统启动时间 */
+  system_start_ms = HAL_GetTick();
   /* USER CODE END Init */
 
   AS5600TaskHandle   = osThreadNew(StartAS5600Task,   NULL, &AS5600Task_attributes);
@@ -363,30 +368,24 @@ void StartUARTTask(void *argument)
                 /* M1 速度命令 */
                 float val = atof(cmd + 1);
                 m1_target_velocity = val;
-                UART_Printf("M1 vel:%.2f\r\n", m1_target_velocity);
             }
             else if (cmd[0] == 'B' || cmd[0] == 'b')
             {
                 /* M2 速度命令 */
                 float val = atof(cmd + 1);
                 m2_target_velocity = val;
-                UART_Printf("M2 vel:%.2f\r\n", m2_target_velocity);
             }
             else if (cmd[0] == 'C' || cmd[0] == 'c')
             {
                 /* M1 电流命令 */
                 float val = atof(cmd + 1);
                 m1_target_current = val;
-                UART_Printf("M1 cur:%.3fA\r\n", m1_target_current);
-                UART_Printf("Target currents - M1:%.3fA M2:%.3fA\r\n", m1_target_current, m2_target_current);
             }
             else if (cmd[0] == 'D' || cmd[0] == 'd')
             {
                 /* M2 电流命令 */
                 float val = atof(cmd + 1);
                 m2_target_current = val;
-                UART_Printf("M2 cur:%.3fA\r\n", m2_target_current);
-                UART_Printf("Target currents - M1:%.3fA M2:%.3fA\r\n", m1_target_current, m2_target_current);
             }
             else
             {
@@ -426,12 +425,12 @@ void StartOLEDTask(void *argument)
             sprintf(buf, "I:%.3f", cur_m1_actual_iq);
             OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            // 显示系统就绪状态：当系统完全准备接收电机参数时显示OK，否则显示NO
-            if (system_ready) {
-                OLED_PrintASCIIString(0, 48, "OK", &afont16x8, OLED_COLOR_NORMAL);
-            } else {
-                OLED_PrintASCIIString(0, 48, "NO", &afont16x8, OLED_COLOR_NORMAL);
-            }
+            // 显示运行时间
+            uint32_t current_time = HAL_GetTick() - system_start_ms;
+            uint32_t seconds = current_time / 1000;
+            uint32_t millis = current_time % 1000;
+            sprintf(buf, "%lus%03ums", seconds, millis);
+            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
 
             /* ---- 右半: M2 ---- */
             OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
@@ -442,12 +441,12 @@ void StartOLEDTask(void *argument)
             sprintf(buf, "I:%.3f", cur_m2_actual_iq);
             OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            // M2侧也显示系统就绪状态
-            if (system_ready) {
-                OLED_PrintASCIIString(65, 48, "OK", &afont16x8, OLED_COLOR_NORMAL);
-            } else {
-                OLED_PrintASCIIString(65, 48, "NO", &afont16x8, OLED_COLOR_NORMAL);
-            }
+            // 右侧也显示运行时间
+            current_time = HAL_GetTick() - system_start_ms;
+            seconds = current_time / 1000;
+            millis = current_time % 1000;
+            sprintf(buf, "%lus%03ums", seconds, millis);
+            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
         }
         else
         {
