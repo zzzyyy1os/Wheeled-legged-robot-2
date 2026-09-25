@@ -84,12 +84,6 @@ extern float cur_m2_Kd;
 extern float cur_m2_LPF_Tf;
 extern float cur_m2_actual_iq;
 
-/* 偏移值 (调试用) */
-extern float cur_m1_offset_ia;
-extern float cur_m1_offset_ib;
-extern float cur_m2_offset_ia;
-extern float cur_m2_offset_ib;
-
 /* Clarke+Park变换: Ia,Ib,θe → Iq */
 float cal_Iq_Id(float current_a, float current_b, float angle_el);
 

@@ -146,32 +146,48 @@ void CurrSense_Init(Current_Sensor_t *sensor)
  *   alpha越小滤波越强, 但延迟越大
  *   alpha=0.2 ≈ 5次平均效果, 延迟约2个采样周期
  ******************************************************************/
-static float adc_filtered[4] = {0};
+/* M1和M2独立的滤波器，避免相互干扰 */
+static float adc_filtered_m1[2] = {0};  /* M1: Ia[0], Ib[1] */
+static float adc_filtered_m2[2] = {0};  /* M2: Ia[0], Ib[1] */
 static uint8_t adc_filter_inited = 0;
 #define ADC_FILTER_ALPHA  0.2f
 
-static void adc_filter_update(void)
+static void adc_filter_update_m1(void)
 {
     if (!adc_filter_inited)
     {
-        /* 首次用原始值初始化 */
-        for (int i = 0; i < 4; i++)
-            adc_filtered[i] = (float)adc_dma_buf[i];
+        adc_filtered_m1[0] = (float)adc_dma_buf[0];
+        adc_filtered_m1[1] = (float)adc_dma_buf[1];
+    }
+    else
+    {
+        adc_filtered_m1[0] += ADC_FILTER_ALPHA * ((float)adc_dma_buf[0] - adc_filtered_m1[0]);
+        adc_filtered_m1[1] += ADC_FILTER_ALPHA * ((float)adc_dma_buf[1] - adc_filtered_m1[1]);
+    }
+}
+
+static void adc_filter_update_m2(void)
+{
+    if (!adc_filter_inited)
+    {
+        adc_filtered_m2[0] = (float)adc_dma_buf[2];
+        adc_filtered_m2[1] = (float)adc_dma_buf[3];
         adc_filter_inited = 1;
     }
     else
     {
-        /* IIR低通: y = alpha*x + (1-alpha)*y */
-        for (int i = 0; i < 4; i++)
-            adc_filtered[i] += ADC_FILTER_ALPHA * ((float)adc_dma_buf[i] - adc_filtered[i]);
+        adc_filtered_m2[0] += ADC_FILTER_ALPHA * ((float)adc_dma_buf[2] - adc_filtered_m2[0]);
+        adc_filtered_m2[1] += ADC_FILTER_ALPHA * ((float)adc_dma_buf[3] - adc_filtered_m2[1]);
     }
 }
 
 void ADC_Filter_Reset(void)
 {
     adc_filter_inited = 0;
-    for (int i = 0; i < 4; i++)
-        adc_filtered[i] = 0;
+    adc_filtered_m1[0] = 0;
+    adc_filtered_m1[1] = 0;
+    adc_filtered_m2[0] = 0;
+    adc_filtered_m2[1] = 0;
 }
 
 /******************************************************************
@@ -180,22 +196,31 @@ void ADC_Filter_Reset(void)
  ******************************************************************/
 void GetPhaseCurrent(Current_Sensor_t *sensor)
 {
-    /* 更新ADC滤波值 */
-    adc_filter_update();
-
-    /* 确定ADC通道索引 */
-    int idx_a = (sensor->Sen_Num == 0) ? 0 : 2;
-    int idx_b = idx_a + 1;
-
-    /* 滤波后的ADC → 电压 */
-    float voltage_a = adc_filtered[idx_a] * ADC_CONV;
-    float voltage_b = adc_filtered[idx_b] * ADC_CONV;
-
-    /* 电压 → 电流 (减偏移, 乘增益) */
+    /* 电压 → 电流转换系数 */
     float vlots_to_amps = 1.0f / SHUNT_RESISTOR / AMP_GAIN;
 
-    sensor->I_a = (voltage_a - sensor->offset_ia) * (sensor->gain_sign * vlots_to_amps);
-    sensor->I_b = (voltage_b - sensor->offset_ib) * (sensor->gain_sign * vlots_to_amps);
+    if (sensor->Sen_Num == 0)
+    {
+        /* M1: 只更新和使用M1的滤波值 */
+        adc_filter_update_m1();
+
+        float voltage_a = adc_filtered_m1[0] * ADC_CONV;
+        float voltage_b = adc_filtered_m1[1] * ADC_CONV;
+
+        sensor->I_a = (voltage_a - sensor->offset_ia) * (sensor->gain_sign * vlots_to_amps);
+        sensor->I_b = (voltage_b - sensor->offset_ib) * (sensor->gain_sign * vlots_to_amps);
+    }
+    else
+    {
+        /* M2: 只更新和使用M2的滤波值 */
+        adc_filter_update_m2();
+
+        float voltage_a = adc_filtered_m2[0] * ADC_CONV;
+        float voltage_b = adc_filtered_m2[1] * ADC_CONV;
+
+        sensor->I_a = (voltage_a - sensor->offset_ia) * (sensor->gain_sign * vlots_to_amps);
+        sensor->I_b = (voltage_b - sensor->offset_ib) * (sensor->gain_sign * vlots_to_amps);
+    }
 }
 
 /******************************************************************

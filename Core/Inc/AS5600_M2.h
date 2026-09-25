@@ -7,6 +7,7 @@
 /* M2编码器全局变量 (由AS5600_M2任务更新, 其他任务只读) */
 extern volatile float    as5600_m2_angle;           /* 累积多圈角度 (rad) */
 extern volatile float    as5600_m2_angle_single;    /* 单圈角度 (rad) */
+extern volatile float    as5600_m2_velocity;        /* 预计算速度 (rad/s), 无竞态 */
 extern volatile uint16_t as5600_m2_raw;             /* 原始值 (0-4095) */
 extern volatile uint8_t  as5600_m2_error;           /* I2C错误计数, 0=正常 */
 extern volatile uint8_t  as5600_m2_ready;           /* 传感器就绪标志 */

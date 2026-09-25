@@ -133,7 +133,7 @@ void velocityClosedloop_Init(void)
 float velocityClosedloop(float target_velocity)
 {
     float Vel = Lowpassfilter(vel_LPF_Tf, GetVelocity());
-    float Uq  = PID_Controller(vel_Kp, vel_Ki, vel_Kd, MOTOR_DIR * (target_velocity - Vel));
+    float Uq  = PID_Controller(vel_Kp, vel_Ki, vel_Kd, MOTOR_DIR * (target_velocity - Vel), MOTOR_DIR * Vel);
     setPhaseVoltage(Uq, 0, getElectricalAngle());
     vel_actual_speed = Vel;
     return Uq;
@@ -151,7 +151,7 @@ void positionClosedloop_Init(void)
 float positionClosedloop(float target_angle_rad)
 {
     float angle = GetAngle();
-    float Uq = PID_Controller(pos_Kp, pos_Ki, pos_Kd, (target_angle_rad - MOTOR_DIR * angle) * 180.0f / PI);
+    float Uq = PID_Controller(pos_Kp, pos_Ki, pos_Kd, (target_angle_rad - MOTOR_DIR * angle) * 180.0f / PI, MOTOR_DIR * angle * 180.0f / PI);
     setPhaseVoltage(Uq, 0, getElectricalAngle());
     pos_actual_angle = angle;
     return Uq;
@@ -235,7 +235,7 @@ void velocityClosedloop_M2_Init(void)
 float velocityClosedloop_M2(float target_velocity)
 {
     float Vel = Lowpassfilter_Instance(&m2_lpf_inst, vel_m2_LPF_Tf, GetVelocity_M2());
-    float Uq  = PID_Instance_Controller(&m2_pid_inst, vel_m2_Kp, vel_m2_Ki, vel_m2_Kd, MOTOR_DIR * (target_velocity - Vel));
+    float Uq  = PID_Instance_Controller(&m2_pid_inst, vel_m2_Kp, vel_m2_Ki, vel_m2_Kd, MOTOR_DIR * (target_velocity - Vel), MOTOR_DIR * Vel);
     setPhaseVoltage_M2(Uq, 0, getElectricalAngle_M2());
     vel_m2_actual_speed = Vel;
     return Uq;
@@ -262,12 +262,6 @@ float cur_m2_Kd        = 0;
 float cur_m2_LPF_Tf    = 0;
 float cur_m2_actual_iq = 0;
 
-/* 偏移值 (调试用) */
-float cur_m1_offset_ia = 0;
-float cur_m1_offset_ib = 0;
-float cur_m2_offset_ia = 0;
-float cur_m2_offset_ib = 0;
-
 /* 电流环 PID/LPF 实例 (独立状态) */
 static PID_Instance_t m1_cur_pid_inst;
 static LPF_Instance_t m1_cur_lpf_inst;
@@ -280,7 +274,7 @@ static LPF_Instance_t m2_cur_lpf_inst;
  * M1和M2的极性可能不同(取决于硬件接线), 需要分别调试
  * 如果电机飞车/震荡, 把gain_sign取反
  */
-static Current_Sensor_t current_sensor_m1 = { .Sen_Num = 0, .gain_sign = 1.0f };
+static Current_Sensor_t current_sensor_m1 = { .Sen_Num = 0, .gain_sign = -1.0f };
 static Current_Sensor_t current_sensor_m2 = { .Sen_Num = 1, .gain_sign = 1.0f };
 
 /******************************************************************
@@ -317,10 +311,6 @@ void currentClosedloop_M1_Init(void)
 
     /* 初始化电流传感器 (校准偏移, 电机必须静止!) */
     CurrSense_Init(&current_sensor_m1);
-
-    /* 保存偏移值用于调试 */
-    cur_m1_offset_ia = current_sensor_m1.offset_ia;
-    cur_m1_offset_ib = current_sensor_m1.offset_ib;
 }
 
 /******************************************************************
@@ -362,10 +352,10 @@ float currentClosedloop_M1(float target_iq)
     /* 由于gain_sign设置为-1.0f，反馈信号已经取反，所以直接使用 */
     float error = target_iq - Iq_filtered;
 
-    /* 5. PID控制 */
+    /* 5. PID控制 (D项微分作用在Iq_filtered上) */
     float Uq = PID_Instance_Controller(&m1_cur_pid_inst,
                                         cur_m1_Kp, cur_m1_Ki, cur_m1_Kd,
-                                        error);
+                                        error, Iq_filtered);
 
     /* 7. 设置电压 */
     setPhaseVoltage(Uq, 0, getElectricalAngle());
@@ -390,10 +380,6 @@ void currentClosedloop_M2_Init(void)
     LPF_Instance_Init(&m2_cur_lpf_inst);
 
     CurrSense_Init(&current_sensor_m2);
-
-    /* 保存偏移值用于调试 */
-    cur_m2_offset_ia = current_sensor_m2.offset_ia;
-    cur_m2_offset_ib = current_sensor_m2.offset_ib;
 }
 
 /******************************************************************
@@ -418,24 +404,30 @@ float currentClosedloop_M2(float target_iq)
         return 0.0f;
     }
 
+    /* 1. 读取相电流 */
     GetPhaseCurrent(&current_sensor_m2);
 
+    /* 2. Clarke+Park变换 → Iq */
     float Iq_raw = cal_Iq_Id(current_sensor_m2.I_a,
                               current_sensor_m2.I_b,
                               getElectricalAngle_M2());
 
+    /* 3. 低通滤波 */
     float Iq_filtered = Lowpassfilter_Instance(&m2_cur_lpf_inst, cur_m2_LPF_Tf, Iq_raw);
 
-    /* M2使用正常的反馈信号处理 - 根据实际运行情况，M2方向是正确的 */
+    /* 4. 计算误差 - 根据传感器增益符号调整反馈方向 */
+    /* 由于gain_sign设置为-1.0f，反馈信号已经取反，所以直接使用 */
     float error = target_iq - Iq_filtered;
 
+    /* 5. PID控制 (D项微分作用在Iq_filtered上) */
     float Uq = PID_Instance_Controller(&m2_cur_pid_inst,
                                         cur_m2_Kp, cur_m2_Ki, cur_m2_Kd,
-                                        error);
+                                        error, Iq_filtered);
 
+    /* 7. 设置电压 */
     setPhaseVoltage_M2(Uq, 0, getElectricalAngle_M2());
 
-    /* M2的显示值保持原始反馈值，以确保与控制逻辑一致 */
+    /* 存储原始反馈值用于显示，与控制逻辑一致 */
     cur_m2_actual_iq = Iq_filtered;
     return Uq;
 }
@@ -493,10 +485,20 @@ float velocityCurrentClosedloop_M1(float target_velocity)
     /* 速度LPF */
     float Vel = Lowpassfilter_Instance(&m1_vel_lpf_inst, vel_LPF_Tf, GetVelocity());
 
-    /* 速度PID → 目标电流 */
+    /* Anti-windup: 误差大幅变号时重置积分器 (防止急减速时积分累积导致卡顿) */
+    float err = MOTOR_DIR * (target_velocity - Vel);
+    if (fabsf(err) > 2.0f &&
+        ((err > 0 && m1_vel_pid_inst.Last_Error < 0) ||
+         (err < 0 && m1_vel_pid_inst.Last_Error > 0)))
+    {
+        m1_vel_pid_inst.Last_intergration = 0.0f;
+    }
+
+    /* 速度PID → 目标电流 (D项微分作用在速度测量值上) */
     float target_iq = PID_Instance_Controller(&m1_vel_pid_inst,
                                                vel_Kp, vel_Ki, vel_Kd,
-                                               MOTOR_DIR * (target_velocity - Vel));
+                                               err,
+                                               MOTOR_DIR * Vel);
 
     /* 电流闭环 */
     currentClosedloop_M1(target_iq);
@@ -540,13 +542,25 @@ float velocityCurrentClosedloop_M2(float target_velocity)
 
     float Vel = Lowpassfilter_Instance(&m2_vel_lpf_inst, vel_m2_LPF_Tf, GetVelocity_M2());
 
+    /* Anti-windup: 误差大幅变号时重置积分器 (防止急减速时积分累积导致卡顿) */
+    float err = MOTOR_DIR * (target_velocity - Vel);
+    if (fabsf(err) > 2.0f &&
+        ((err > 0 && m2_vel_pid_inst.Last_Error < 0) ||
+         (err < 0 && m2_vel_pid_inst.Last_Error > 0)))
+    {
+        m2_vel_pid_inst.Last_intergration = 0.0f;
+    }
+
     float target_iq = PID_Instance_Controller(&m2_vel_pid_inst,
                                                vel_m2_Kp, vel_m2_Ki, vel_m2_Kd,
-                                               MOTOR_DIR * (target_velocity - Vel));
+                                               err,
+                                               MOTOR_DIR * Vel);
 
     currentClosedloop_M2(target_iq);
 
     vel_m2_actual_speed = Vel;
     return target_iq;
 }
+
+
 

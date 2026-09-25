@@ -40,33 +40,33 @@
 
 /* M1 速度环 PID 参数 */
 #define M1_VEL_KP        0.1f
-#define M1_VEL_KI        0.0f
+#define M1_VEL_KI        0.1f
 #define M1_VEL_KD        0.0f
-#define M1_VEL_LPF_TF    0.5f
+#define M1_VEL_LPF_TF    0.2f
 
 /* M2 速度环 PID 参数 */
 #define M2_VEL_KP        0.1f
-#define M2_VEL_KI        0.0f
+#define M2_VEL_KI        0.1f
 #define M2_VEL_KD        0.0f
-#define M2_VEL_LPF_TF    0.5f
+#define M2_VEL_LPF_TF    0.2f
 
 /* M1 电流环 PID 参数 */
-#define M1_CUR_KP        6.0f
-#define M1_CUR_KI        0.0f
+#define M1_CUR_KP        1.3f
+#define M1_CUR_KI        0.4f
 #define M1_CUR_KD        0.0f
-#define M1_CUR_LPF_TF    0.02f
+#define M1_CUR_LPF_TF    0.2f
 
 /* M2 电流环 PID 参数 */
-#define M2_CUR_KP        6.0f
-#define M2_CUR_KI        0.0f
+#define M2_CUR_KP        1.3f
+#define M2_CUR_KI        0.4f
 #define M2_CUR_KD        0.0f
-#define M2_CUR_LPF_TF    0.02f
+#define M2_CUR_LPF_TF    0.2f
 
-/* 速度限制 (rad/s) */
+/* 目标速度上限 (rad/s), 速度环输出(电流)由PID内部LIMIT=6.3限幅 */
 #define VELOCITY_LIMIT   30.0f
 
 /* 控制模式选择: 0=速度环, 1=电流环, 2=ADC诊断, 3=速度+电流双闭环, 4=三环嵌套 */
-#define CURRENT_LOOP_TEST  1
+#define CURRENT_LOOP_TEST  3
 
 /* ========================================================================= */
 
@@ -160,6 +160,11 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
   /* USER CODE END Init */
 
+  /* DWT微秒定时器 (必须在编码器任务之前初始化, 因为速度计算要用) */
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CYCCNT = 0;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
   AS5600TaskHandle   = osThreadNew(StartAS5600Task,   NULL, &AS5600Task_attributes);
   AS5600M2TaskHandle = osThreadNew(StartAS5600M2Task, NULL, &AS5600M2Task_attributes);
   MotorTaskHandle    = osThreadNew(StartMotorTask,    NULL, &MotorTask_attributes);
@@ -241,10 +246,7 @@ void StartMotorTask(void *argument)
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
-    /* DWT微秒定时器 */
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CYCCNT = 0;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    /* DWT已在MX_FREERTOS_Init中初始化 */
 
     /* ---- 等待M1编码器就绪 ---- */
     while (!as5600_ready) { osDelay(10); }

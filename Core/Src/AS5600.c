@@ -11,6 +11,7 @@
 /* 全局角度变量 */
 volatile float    as5600_angle        = 0.0f;
 volatile float    as5600_angle_single = 0.0f;
+volatile float    as5600_velocity     = 0.0f;  /* 预计算速度, 无竞态 */
 volatile uint16_t as5600_raw          = 0;
 volatile uint8_t  as5600_error        = 0;
 volatile uint8_t  as5600_ready        = 0;
@@ -18,6 +19,9 @@ volatile uint8_t  as5600_ready        = 0;
 /* 内部状态 */
 static float    angle_prev     = 0.0f;
 static int32_t  full_rotations = 0;
+static uint32_t vel_last_us    = 0;  /* 速度计算用, DWT微秒 */
+static float    vel_last_angle = 0.0f;
+static uint8_t  vel_inited     = 0;
 
 /* 中断方式相关 (非static, 供AS5600_M2.c中的回调路由使用) */
 osSemaphoreId_t i2c_m1_sem = NULL;
@@ -66,6 +70,8 @@ void AS5600_Init(void)
     full_rotations = 0;
     as5600_error = 0;
     as5600_ready = 0;
+    vel_inited = 0;      /* 重置速度计算状态 */
+    as5600_velocity = 0.0f;
 
     /* 创建信号量 */
     if (i2c_m1_sem == NULL)
@@ -167,6 +173,27 @@ uint8_t AS5600_Read(void)
     angle_prev = val;
     as5600_angle = (float)full_rotations * 6.2831853f + angle_prev;
 
+    /* 在同一函数内计算速度, 消除跨任务竞态 */
+    {
+        uint32_t now_us = DWT->CYCCNT / (SystemCoreClock / 1000000);
+        if (!vel_inited)
+        {
+            vel_last_us = now_us;
+            vel_last_angle = as5600_angle;
+            vel_inited = 1;
+            as5600_velocity = 0.0f;
+        }
+        else
+        {
+            float dt = (now_us - vel_last_us) * 1e-6f;
+            vel_last_us = now_us;
+            if (dt < 0.0001f) dt = 0.0001f;
+            if (dt > 0.5f) dt = 0.5f;
+            as5600_velocity = (as5600_angle - vel_last_angle) / dt;
+            vel_last_angle = as5600_angle;
+        }
+    }
+
     as5600_ready = 1;
     return 1;
 }
@@ -190,35 +217,9 @@ float GetAngle_NoTrack(void)
 }
 
 /**
-  * @brief  获取速度 (使用HAL_GetTick, 适配F407)
+  * @brief  获取速度 (在AS5600_Read()中预计算, 无竞态)
   */
-static uint32_t Last_Vel_tick = 0;
-static float Vel_Last_Angle = 0.0f;
-static uint8_t vel_initialized = 0;
-
 float GetVelocity(void)
 {
-    uint32_t now = HAL_GetTick();
-    float Vel_Angle = GetAngle();
-
-    /* 首次调用, 只记录不计算 */
-    if (!vel_initialized)
-    {
-        Vel_Last_Angle = Vel_Angle;
-        Last_Vel_tick = now;
-        vel_initialized = 1;
-        return 0.0f;
-    }
-
-    float dt = (now - Last_Vel_tick) * 1e-3f;  /* ms → s */
-    Last_Vel_tick = now;
-
-    if (dt < 0.001f) dt = 0.001f;  /* 最小1ms */
-    if (dt > 0.5f) dt = 0.5f;      /* 最大500ms */
-
-    float velocity = (Vel_Angle - Vel_Last_Angle) / dt;
-
-    Vel_Last_Angle = Vel_Angle;
-
-    return velocity;
+    return (float)as5600_velocity;
 }

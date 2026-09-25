@@ -15,6 +15,7 @@
 /* M2全局角度变量 */
 volatile float    as5600_m2_angle        = 0.0f;
 volatile float    as5600_m2_angle_single = 0.0f;
+volatile float    as5600_m2_velocity     = 0.0f;  /* 预计算速度, 无竞态 */
 volatile uint16_t as5600_m2_raw          = 0;
 volatile uint8_t  as5600_m2_error        = 0;
 volatile uint8_t  as5600_m2_ready        = 0;
@@ -22,6 +23,9 @@ volatile uint8_t  as5600_m2_ready        = 0;
 /* M2内部状态 */
 static float    m2_angle_prev     = 0.0f;
 static int32_t  m2_full_rotations = 0;
+static uint32_t m2_vel_last_us    = 0;
+static float    m2_vel_last_angle = 0.0f;
+static uint8_t  m2_vel_inited     = 0;
 
 /* M2中断方式相关 */
 static osSemaphoreId_t i2c_m2_sem = NULL;
@@ -115,6 +119,8 @@ void AS5600_M2_Init(void)
     m2_full_rotations = 0;
     as5600_m2_error = 0;
     as5600_m2_ready = 0;
+    m2_vel_inited = 0;      /* 重置速度计算状态 */
+    as5600_m2_velocity = 0.0f;
 
     /* 创建信号量 */
     if (i2c_m2_sem == NULL)
@@ -209,6 +215,27 @@ uint8_t AS5600_M2_Read(void)
     m2_angle_prev = val;
     as5600_m2_angle = (float)m2_full_rotations * 6.2831853f + m2_angle_prev;
 
+    /* 在同一函数内计算速度, 消除跨任务竞态 */
+    {
+        uint32_t now_us = DWT->CYCCNT / (SystemCoreClock / 1000000);
+        if (!m2_vel_inited)
+        {
+            m2_vel_last_us = now_us;
+            m2_vel_last_angle = as5600_m2_angle;
+            m2_vel_inited = 1;
+            as5600_m2_velocity = 0.0f;
+        }
+        else
+        {
+            float dt = (now_us - m2_vel_last_us) * 1e-6f;
+            m2_vel_last_us = now_us;
+            if (dt < 0.0001f) dt = 0.0001f;
+            if (dt > 0.5f) dt = 0.5f;
+            as5600_m2_velocity = (as5600_m2_angle - m2_vel_last_angle) / dt;
+            m2_vel_last_angle = as5600_m2_angle;
+        }
+    }
+
     as5600_m2_ready = 1;
     return 1;
 }
@@ -223,33 +250,10 @@ float GetAngle_NoTrack_M2(void)
     return (float)as5600_m2_angle_single;
 }
 
-/* M2速度计算 (使用HAL_GetTick, 适配F407) */
-static uint32_t M2_Last_Vel_tick = 0;
-static float M2_Vel_Last_Angle = 0.0f;
-static uint8_t m2_vel_initialized = 0;
-
+/**
+  * @brief  获取M2速度 (在AS5600_M2_Read()中预计算, 无竞态)
+  */
 float GetVelocity_M2(void)
 {
-    uint32_t now = HAL_GetTick();
-    float Vel_Angle = GetAngle_M2();
-
-    if (!m2_vel_initialized)
-    {
-        M2_Vel_Last_Angle = Vel_Angle;
-        M2_Last_Vel_tick = now;
-        m2_vel_initialized = 1;
-        return 0.0f;
-    }
-
-    float dt = (now - M2_Last_Vel_tick) * 1e-3f;
-    M2_Last_Vel_tick = now;
-
-    if (dt < 0.001f) dt = 0.001f;
-    if (dt > 0.5f) dt = 0.5f;
-
-    float velocity = (Vel_Angle - M2_Vel_Last_Angle) / dt;
-
-    M2_Vel_Last_Angle = Vel_Angle;
-
-    return velocity;
+    return (float)as5600_m2_velocity;
 }
