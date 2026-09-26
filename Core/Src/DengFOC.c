@@ -91,12 +91,12 @@ float getElectricalAngle(void)
 void alignSensor(void)
 {
     setPhaseVoltage(3.0f, 0, _3PI_2);
-    HAL_Delay(3000);
+    HAL_Delay(700);
 
     zero_electric_angle = getElectricalAngle();
 
     setPhaseVoltage(0, 0, 0);
-    HAL_Delay(500);
+    HAL_Delay(100);
 
     AS5600_Init();
 }
@@ -208,12 +208,12 @@ float getElectricalAngle_M2(void)
 void alignSensor_M2(void)
 {
     setPhaseVoltage_M2(3.0f, 0, _3PI_2);
-    HAL_Delay(3000);
+    HAL_Delay(700);
 
     zero_electric_angle_m2 = getElectricalAngle_M2();
 
     setPhaseVoltage_M2(0, 0, 0);
-    HAL_Delay(500);
+    HAL_Delay(100);
 
     AS5600_M2_Init();
 }

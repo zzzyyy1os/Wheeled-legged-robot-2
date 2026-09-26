@@ -102,7 +102,7 @@ void ADC_Current_Init(void)
  ******************************************************************/
 static void DriftOffsets(Current_Sensor_t *sensor)
 {
-    uint16_t detect_rounds = 1000;
+    uint16_t detect_rounds = 100;
     float sum_ia = 0.0f;
     float sum_ib = 0.0f;
 

@@ -263,7 +263,7 @@ void StartMotorTask(void *argument)
     /* ---- 关键: 对齐后停止所有PWM输出, 等待电流降为0 ---- */
     setPhaseVoltage(0, 0, 0);
     setPhaseVoltage_M2(0, 0, 0);
-    osDelay(1000);  /* 等待1秒让电机完全静止 */
+    osDelay(100);  /* 等待电机完全静止 */
 
     /* 设置系统就绪标志并发送就绪通知 */
     system_ready = 1;
@@ -282,7 +282,7 @@ void StartMotorTask(void *argument)
     /* ========== 速度+电流双闭环模式 ========== */
 
     if (!ADC_Is_Started()) { ADC_Current_Init(); }
-    HAL_Delay(100);
+    HAL_Delay(20);
 
     /* 应用PID参数 */
     vel_Kp = M1_VEL_KP; vel_Ki = M1_VEL_KI; vel_Kd = M1_VEL_KD; vel_LPF_Tf = M1_VEL_LPF_TF;
