@@ -1,5 +1,6 @@
 #include "uart_comm.h"
 #include "usart.h"
+#include "usart6.h"
 #include "cmsis_os.h"
 #include <stdio.h>
 #include <string.h>
@@ -89,5 +90,10 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     if (huart->Instance == USART1)
     {
         HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_buf, UART_RX_BUF_SIZE);
+    }
+    else if (huart->Instance == USART6)
+    {
+        HAL_UART_AbortReceive(&huart6);
+        HAL_UART_Receive_IT(&huart6, &rx_byte, 1);
     }
 }

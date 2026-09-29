@@ -55,6 +55,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/LPF.c
     Core/Src/adc_current.c
     Core/Src/key.c
+    Core/Src/usart6.c
+    Core/Src/mpu6050.c
 )
 
 # Add include paths

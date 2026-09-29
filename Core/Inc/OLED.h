@@ -10,6 +10,7 @@ typedef enum {
   OLED_COLOR_REVERSED    // 反色模式 白底黑字
 } OLED_ColorMode;
 
+void OLED_GPIO_Init(void);  /* 软件I2C引脚初始化 (PC12=SCL, PC8=SDA) */
 void OLED_Init();
 void OLED_DisPlay_On();
 void OLED_DisPlay_Off();

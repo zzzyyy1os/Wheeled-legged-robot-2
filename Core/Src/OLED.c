@@ -18,7 +18,7 @@
  *
  */
 #include "OLED.h"
-#include "i2c.h"
+#include "main.h"
 #include <math.h>
 #include <stdlib.h>
 
@@ -33,19 +33,93 @@
 // 显存
 uint8_t OLED_GRAM[OLED_PAGE][OLED_COLUMN];
 
+// ========================== 软件I2C (PC12=SCL, PC8=SDA) ==========================
+
+#define SCL_PORT  GPIOC
+#define SCL_PIN   GPIO_PIN_12
+#define SDA_PORT  GPIOC
+#define SDA_PIN   GPIO_PIN_8
+
+static inline void SCL_H(void) { HAL_GPIO_WritePin(SCL_PORT, SCL_PIN, GPIO_PIN_SET); }
+static inline void SCL_L(void) { HAL_GPIO_WritePin(SCL_PORT, SCL_PIN, GPIO_PIN_RESET); }
+static inline void SDA_H(void) { HAL_GPIO_WritePin(SDA_PORT, SDA_PIN, GPIO_PIN_SET); }
+static inline void SDA_L(void) { HAL_GPIO_WritePin(SDA_PORT, SDA_PIN, GPIO_PIN_RESET); }
+static inline uint8_t SDA_R(void) { return HAL_GPIO_ReadPin(SDA_PORT, SDA_PIN); }
+
+static void I2C_Delay(void)
+{
+    /* ~2us delay at 168MHz, 软件I2C速率约250kHz */
+    volatile uint32_t n = 16;
+    while (n--) __NOP();
+}
+
+static void SoftI2C_Start(void)
+{
+    SDA_H(); SCL_H(); I2C_Delay();
+    SDA_L(); I2C_Delay();
+    SCL_L(); I2C_Delay();
+}
+
+static void SoftI2C_Stop(void)
+{
+    SDA_L(); SCL_H(); I2C_Delay();
+    SDA_H(); I2C_Delay();
+}
+
+static uint8_t SoftI2C_WriteByte(uint8_t data)
+{
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        if (data & 0x80) SDA_H(); else SDA_L();
+        data <<= 1;
+        I2C_Delay();
+        SCL_H(); I2C_Delay();
+        SCL_L(); I2C_Delay();
+    }
+    /* ACK */
+    SDA_H(); I2C_Delay();
+    SCL_H(); I2C_Delay();
+    uint8_t ack = SDA_R();
+    SCL_L(); I2C_Delay();
+    return ack;  /* 0=ACK, 1=NACK */
+}
+
+/**
+ * @brief 软件I2C GPIO初始化 (PC12=SCL, PC8=SDA)
+ */
+void OLED_GPIO_Init(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+
+    GPIO_InitStruct.Pin   = SCL_PIN;
+    GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
+    GPIO_InitStruct.Pull  = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(SCL_PORT, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = SDA_PIN;
+    HAL_GPIO_Init(SDA_PORT, &GPIO_InitStruct);
+
+    SCL_H();
+    SDA_H();
+}
+
 // ========================== 底层通信函数 ==========================
 
 /**
- * @brief 向OLED发送数据的函数
- * @param data 要发送的数据
- * @param len 要发送的数据长度
- * @return None
- * @note 此函数是移植本驱动时的重要函数 将本驱动库移植到其他平台时应根据实际情况修改此函数
- * @note 使用I2C1 (PB6=SCL, PB7=SDA)
+ * @brief 向OLED发送数据 (软件I2C)
  */
 void OLED_Send(uint8_t *data, uint8_t len)
 {
-  HAL_I2C_Master_Transmit(&hi2c1, OLED_ADDRESS, data, len, HAL_MAX_DELAY);
+    SoftI2C_Start();
+    SoftI2C_WriteByte(OLED_ADDRESS);  /* 从机地址+写 */
+    for (uint16_t i = 0; i < len; i++)
+    {
+        SoftI2C_WriteByte(data[i]);
+    }
+    SoftI2C_Stop();
 }
 
 /**
@@ -53,9 +127,9 @@ void OLED_Send(uint8_t *data, uint8_t len)
  */
 void OLED_SendCmd(uint8_t cmd)
 {
-  static uint8_t sendBuffer[2] = {0};
-  sendBuffer[1] = cmd;
-  OLED_Send(sendBuffer, 2);
+    static uint8_t sendBuffer[2] = {0};
+    sendBuffer[1] = cmd;
+    OLED_Send(sendBuffer, 2);
 }
 
 // ========================== OLED驱动函数 ==========================
