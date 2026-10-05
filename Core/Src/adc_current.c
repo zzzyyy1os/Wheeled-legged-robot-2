@@ -1,14 +1,14 @@
 /**
   * @file    adc_current.c
   * @brief   ADC电流采样 (移植自V3P, 适配STM32F407 HAL)
-  *          PA3(IN3), PA6(IN6), PA4(IN4), PA7(IN7)
+  *          PA6(IN6), PA7(IN7), PA3(IN3), PA4(IN4)
   *          DMA循环采集, 支持偏移校准和相电流计算
   */
 #include "adc_current.h"
 #include "stm32f4xx_hal.h"
 #include "uart_comm.h"
 
-/* DMA缓冲区: [0]=PA3(M1_Ia), [1]=PA6(M1_Ib), [2]=PA4(M2_Ia), [3]=PA7(M2_Ib) */
+/* DMA缓冲区: [0]=PA6(M1_Ia), [1]=PA7(M1_Ib), [2]=PA3(M2_Ia), [3]=PA4(M2_Ib) */
 volatile uint16_t adc_dma_buf[ADC_CHANNELS] = {0};
 
 /* 本模块私有句柄 (不与任何其他模块冲突) */
@@ -76,10 +76,10 @@ void ADC_Current_Init(void)
     ADC_ChannelConfTypeDef ch = {0};
     ch.SamplingTime = ADC_SAMPLETIME_84CYCLES;
 
-    ch.Channel = ADC_CHANNEL_3;  ch.Rank = 1;  HAL_ADC_ConfigChannel(&my_hadc, &ch); /* PA3 M1_Ia */
-    ch.Channel = ADC_CHANNEL_6;  ch.Rank = 2;  HAL_ADC_ConfigChannel(&my_hadc, &ch); /* PA6 M1_Ib */
-    ch.Channel = ADC_CHANNEL_4;  ch.Rank = 3;  HAL_ADC_ConfigChannel(&my_hadc, &ch); /* PA4 M2_Ia */
-    ch.Channel = ADC_CHANNEL_7;  ch.Rank = 4;  HAL_ADC_ConfigChannel(&my_hadc, &ch); /* PA7 M2_Ib */
+    ch.Channel = ADC_CHANNEL_6;  ch.Rank = 1;  HAL_ADC_ConfigChannel(&my_hadc, &ch); /* PA6 M1_Ia */
+    ch.Channel = ADC_CHANNEL_7;  ch.Rank = 2;  HAL_ADC_ConfigChannel(&my_hadc, &ch); /* PA7 M1_Ib */
+    ch.Channel = ADC_CHANNEL_3;  ch.Rank = 3;  HAL_ADC_ConfigChannel(&my_hadc, &ch); /* PA3 M2_Ia */
+    ch.Channel = ADC_CHANNEL_4;  ch.Rank = 4;  HAL_ADC_ConfigChannel(&my_hadc, &ch); /* PA4 M2_Ib */
 
     /* ---- DMA中断 ---- */
     HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 5, 0);

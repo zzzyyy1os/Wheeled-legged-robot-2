@@ -1,8 +1,8 @@
 /**
   * @file    adc_current.h
   * @brief   ADC电流采样模块 (移植自V3P, 适配STM32F407 HAL)
-  *          M1: PA3(IN3)=Ia, PA6(IN6)=Ib
-  *          M2: PA4(IN4)=Ia, PA7(IN7)=Ib
+  *          M1: PA6(IN6)=Ia, PA7(IN7)=Ib
+  *          M2: PA3(IN3)=Ia, PA4(IN4)=Ib
   *          支持: 偏移校准, 相电流计算
   */
 #ifndef __ADC_CURRENT_H__
