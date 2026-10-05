@@ -32,6 +32,7 @@
 #include "mpu6050.h"
 #include "adc_current.h"
 #include "key.h"
+#include "servo.h"
 #include <stdio.h>
 #include <stdlib.h>
 /* USER CODE END Includes */
@@ -154,6 +155,14 @@ const osThreadAttr_t KeyTask_attributes = {
   .priority = (osPriority_t) osPriorityLow,
 };
 
+/* 舵机控制任务 */
+osThreadId_t ServoTaskHandle;
+const osThreadAttr_t ServoTask_attributes = {
+  .name = "ServoTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 /* Function prototypes */
 void StartAS5600Task(void *argument);
 void StartAS5600M2Task(void *argument);
@@ -163,6 +172,7 @@ void StartMPU6050Task(void *argument);
 void StartUARTTask(void *argument);
 void StartADCTestTask(void *argument);
 void StartKeyTask(void *argument);
+void StartServoTask(void *argument);
 
 /* USER CODE BEGIN Init */
 /* USER CODE END Init */
@@ -184,6 +194,7 @@ void MX_FREERTOS_Init(void) {
   MPU6050TaskHandle  = osThreadNew(StartMPU6050Task,   NULL, &MPU6050Task_attributes);
   ADCTestTaskHandle  = osThreadNew(StartADCTestTask,  NULL, &ADCTestTask_attributes);
   KeyTaskHandle      = osThreadNew(StartKeyTask,       NULL, &KeyTask_attributes);
+  ServoTaskHandle    = osThreadNew(StartServoTask,     NULL, &ServoTask_attributes);
 
   UART_Comm_Init();
   MX_USART6_UART_Init();
@@ -354,13 +365,12 @@ void StartMotorTask(void *argument)
 }
 
 /*============================================================================
- * UARTTask - 串口DMA接收双电机命令
- *   速度: A<rad/s>\n  B<rad/s>\n
- *   电流: C<安培>\n  D<安培>\n
- *   位置: E<rad>\n    F<rad>\n
- *   示例: A3.14\n  M1速度=3.14rad/s
- *         C0.1\n   M1电流=0.1A
- *         E6.28\n  M1角度=6.28rad (一圈)
+ * UARTTask - 串口DMA接收命令
+ *   电机: A<rad/s>  B<rad/s>  C<安培>  D<安培>
+ *   舵机: U<0~100>  I<0~100>  O<0~100>  P<0~100>
+ *         U=CH1, I=CH2, O=CH3, P=CH4
+ *   示例: U50    舵机CH1设为50 (7.5%占空比)
+ *         I100   舵机CH2设为100 (12.5%占空比)
  *============================================================================*/
 void StartUARTTask(void *argument)
 {
@@ -397,6 +407,27 @@ void StartUARTTask(void *argument)
                 /* M2 电流命令 */
                 float val = atof(cmd + 1);
                 m2_target_current = val;
+            }
+            /* ---- 舵机命令: U/I/O/P → CH1~CH4 ---- */
+            else if (cmd[0] == 'U' || cmd[0] == 'u')
+            {
+                float val = atof(cmd + 1);
+                Servo_SetDuty(SERVO_CH1, val);
+            }
+            else if (cmd[0] == 'I' || cmd[0] == 'i')
+            {
+                float val = atof(cmd + 1);
+                Servo_SetDuty(SERVO_CH2, val);
+            }
+            else if (cmd[0] == 'O' || cmd[0] == 'o')
+            {
+                float val = atof(cmd + 1);
+                Servo_SetDuty(SERVO_CH3, val);
+            }
+            else if (cmd[0] == 'P' || cmd[0] == 'p')
+            {
+                float val = atof(cmd + 1);
+                Servo_SetDuty(SERVO_CH4, val);
             }
             else
             {
@@ -612,5 +643,24 @@ void StartKeyTask(void *argument)
         }
 
         osDelay(10);
+    }
+}
+
+/*============================================================================
+ * ServoTask - 舵机PWM初始化 (TIM4 300Hz, PD12~PD15)
+ *   串口命令 U/I/O/P 在 UARTTask 中处理, 调用 Servo_SetDuty()
+ *============================================================================*/
+void StartServoTask(void *argument)
+{
+    /* 等待系统稳定 */
+    osDelay(500);
+
+    /* 初始化舵机PWM (TIM4 300Hz) */
+    Servo_Init();
+
+    /* 舵机由 UARTTask 通过 Servo_SetDuty() 控制, 此任务空闲 */
+    for (;;)
+    {
+        osDelay(1000);
     }
 }
