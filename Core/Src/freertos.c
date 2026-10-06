@@ -10,6 +10,7 @@
   *                      - MPU6050Task:   六轴传感器读取, 串口1打印 (500ms间隔)
   *                      - UARTTask:      串口DMA接收A/B命令
   *                      - KeyTask:       按键检测 (PA0/PB0/PB1)
+  *                      - SPITask:       SPI通讯任务 (SPI2/SPI3预留接口)
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -34,6 +35,7 @@
 #include "adc_current.h"
 #include "key.h"
 #include "servo.h"
+#include "spi_comm.h"
 #include <stdio.h>
 #include <stdlib.h>
 /* USER CODE END Includes */
@@ -161,6 +163,14 @@ const osThreadAttr_t ServoTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+/* SPI通讯任务 */
+osThreadId_t SPITaskHandle;
+const osThreadAttr_t SPITask_attributes = {
+  .name = "SPITask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+
 /* Function prototypes */
 void StartAS5600Task(void *argument);
 void StartAS5600M2Task(void *argument);
@@ -171,6 +181,7 @@ void StartUARTTask(void *argument);
 void StartADCTestTask(void *argument);
 void StartKeyTask(void *argument);
 void StartServoTask(void *argument);
+void StartSPITask(void *argument);
 
 /* USER CODE BEGIN Init */
 /* USER CODE END Init */
@@ -193,6 +204,7 @@ void MX_FREERTOS_Init(void) {
   ADCTestTaskHandle  = osThreadNew(StartADCTestTask,  NULL, &ADCTestTask_attributes);
   KeyTaskHandle      = osThreadNew(StartKeyTask,       NULL, &KeyTask_attributes);
   ServoTaskHandle    = osThreadNew(StartServoTask,     NULL, &ServoTask_attributes);
+  SPITaskHandle      = osThreadNew(StartSPITask,       NULL, &SPITask_attributes);
 
   UART_Comm_Init();
   MX_USART6_UART_Init();
@@ -606,6 +618,25 @@ void StartServoTask(void *argument)
     /* 舵机由 UARTTask 通过 Servo_SetDuty() 控制, 此任务空闲 */
     for (;;)
     {
+        osDelay(1000);
+    }
+}
+
+/*============================================================================
+ * SPITask - SPI通讯任务 (预留接口)
+ *   SPI2: SCK=PB13, MISO=PC2, MOSI=PC3, CS=PB12
+ *   SPI3: SCK=PB3, MISO=PB4, MOSI=PB5, CS=PA15
+ *   当前为空任务, 等待具体SPI设备驱动添加
+ *============================================================================*/
+void StartSPITask(void *argument)
+{
+    /* SPI已在main()中初始化 */
+
+    for (;;)
+    {
+        /* 预留SPI通讯任务 */
+        /* 可在此添加SPI设备读写操作 */
+
         osDelay(1000);
     }
 }
