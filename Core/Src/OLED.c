@@ -33,12 +33,12 @@
 // 显存
 uint8_t OLED_GRAM[OLED_PAGE][OLED_COLUMN];
 
-// ========================== 软件I2C (PC12=SCL, PC8=SDA) ==========================
+// ========================== 软件I2C (PD2=SCL, PD3=SDA) ==========================
 
-#define SCL_PORT  GPIOC
-#define SCL_PIN   GPIO_PIN_12
-#define SDA_PORT  GPIOC
-#define SDA_PIN   GPIO_PIN_8
+#define SCL_PORT  GPIOD
+#define SCL_PIN   GPIO_PIN_2
+#define SDA_PORT  GPIOD
+#define SDA_PIN   GPIO_PIN_3
 
 static inline void SCL_H(void) { HAL_GPIO_WritePin(SCL_PORT, SCL_PIN, GPIO_PIN_SET); }
 static inline void SCL_L(void) { HAL_GPIO_WritePin(SCL_PORT, SCL_PIN, GPIO_PIN_RESET); }
@@ -85,13 +85,13 @@ static uint8_t SoftI2C_WriteByte(uint8_t data)
 }
 
 /**
- * @brief 软件I2C GPIO初始化 (PC12=SCL, PC8=SDA)
+ * @brief 软件I2C GPIO初始化 (PD2=SCL, PD3=SDA)
  */
 void OLED_GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOD_CLK_ENABLE();
 
     GPIO_InitStruct.Pin   = SCL_PIN;
     GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;

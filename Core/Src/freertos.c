@@ -6,7 +6,8 @@
   *                      - AS5600Task:    M1编码器读取 (I2C3)
   *                      - AS5600M2Task:  M2编码器读取 (I2C2)
   *                      - MotorTask:     M1+M2速度闭环控制
-  *                      - OLEDTask:      分屏显示双电机参数
+  *                      - OLEDTask:      双电机状态显示 (50Hz, 软件I2C: PD2=SCL, PD3=SDA)
+  *                      - MPU6050Task:   六轴传感器读取, 串口1打印 (500ms间隔)
   *                      - UARTTask:      串口DMA接收A/B命令
   *                      - KeyTask:       按键检测 (PA0/PB0/PB1)
   ******************************************************************************
@@ -28,7 +29,7 @@
 #include "AS5600_M2.h"
 #include "uart_comm.h"
 #include "usart6.h"
-#include "OLED.h"  /* 软件I2C: PC12=SCL, PC8=SDA */
+#include "OLED.h"  /* 软件I2C: PD2=SCL, PD3=SDA */
 #include "mpu6050.h"
 #include "adc_current.h"
 #include "key.h"
@@ -83,9 +84,6 @@ static volatile float m2_target_velocity = 0.0f;
 static volatile float m1_target_current = 0.0f;   /* 默认0A, 通过串口C/D命令设置 */
 static volatile float m2_target_current = 0.0f;
 
-/* OLED翻页 (0=电机状态, 1=PID参数) */
-static volatile uint8_t oled_page = 0;
-
 /* 系统就绪标志 */
 static volatile uint8_t system_ready = 0;
 
@@ -115,7 +113,7 @@ const osThreadAttr_t MotorTask_attributes = {
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
-/* Definitions for OLEDTask (软件I2C: PC12=SCL, PC8=SDA) */
+/* Definitions for OLEDTask (软件I2C: PD2=SCL, PD3=SDA) */
 osThreadId_t OLEDTaskHandle;
 const osThreadAttr_t OLEDTask_attributes = {
   .name = "OLEDTask",
@@ -439,7 +437,7 @@ void StartUARTTask(void *argument)
 
 
 /*============================================================================
- * OLEDTask - 双电机分屏显示 (50Hz, 软件I2C: PC12=SCL, PC8=SDA)
+ * OLEDTask - 双电机状态显示 (50Hz, 软件I2C: PD2=SCL, PD3=SDA)
  *============================================================================*/
 void StartOLEDTask(void *argument)
 {
@@ -452,95 +450,34 @@ void StartOLEDTask(void *argument)
     {
         OLED_NewFrame();
 
-        if (oled_page == 0)
-        {
-            /* ========== 第1页: 电机状态 ========== */
-            OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
+        /* ========== 电机状态显示 ========== */
+        OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
 
-            /* ---- 左半: M1 ---- */
-            OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
+        /* ---- 左半: M1 ---- */
+        OLED_PrintASCIIString(0, 0, "M1", &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "S:%.2f", vel_actual_speed);
-            OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+        sprintf(buf, "S:%.2f", vel_actual_speed);
+        OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "I:%.3f", cur_m1_actual_iq);
-            OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+        sprintf(buf, "I:%.3f", cur_m1_actual_iq);
+        OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            OLED_PrintASCIIString(0, 48, "  ", &afont16x8, OLED_COLOR_NORMAL);
+        OLED_PrintASCIIString(0, 48, "  ", &afont16x8, OLED_COLOR_NORMAL);
 
-            /* ---- 右半: M2 ---- */
-            OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
+        /* ---- 右半: M2 ---- */
+        OLED_PrintASCIIString(65, 0, "M2", &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "S:%.2f", vel_m2_actual_speed);
-            OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
+        sprintf(buf, "S:%.2f", vel_m2_actual_speed);
+        OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            sprintf(buf, "I:%.3f", cur_m2_actual_iq);
-            OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
+        sprintf(buf, "I:%.3f", cur_m2_actual_iq);
+        OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
 
-            OLED_PrintASCIIString(65, 48, "  ", &afont16x8, OLED_COLOR_NORMAL);
-        }
-        else if (oled_page == 1)
-        {
-            /* ========== 第2页: PID参数 ========== */
-            OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
-
-            /* ---- 左半: 速度环PID ---- */
-            OLED_PrintASCIIString(0, 0, "VEL", &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "P:%.3f", vel_Kp);
-            OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "I:%.3f", vel_Ki);
-            OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "D:%.3f", vel_Kd);
-            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            /* ---- 右半: 电流环PID ---- */
-            OLED_PrintASCIIString(65, 0, "CUR", &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "P:%.3f", cur_m1_Kp);
-            OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "I:%.3f", cur_m1_Ki);
-            OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "D:%.3f", cur_m1_Kd);
-            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-        }
-        else
-        {
-            /* ========== 第3页: MPU6050数据 ========== */
-            OLED_DrawLine(63, 0, 63, 63, OLED_COLOR_NORMAL);
-
-            /* ---- 左半: 欧拉角 ---- */
-            OLED_PrintASCIIString(0, 0, "IMU", &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "R:%.1f", mpu6050_data.roll);
-            OLED_PrintASCIIString(0, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "P:%.1f", mpu6050_data.pitch);
-            OLED_PrintASCIIString(0, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "Y:%.1f", mpu6050_data.yaw);
-            OLED_PrintASCIIString(0, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            /* ---- 右半: 加速度 ---- */
-            OLED_PrintASCIIString(65, 0, "ACC", &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "X:%.2f", mpu6050_data.Ax);
-            OLED_PrintASCIIString(65, 16, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "Y:%.2f", mpu6050_data.Ay);
-            OLED_PrintASCIIString(65, 32, buf, &afont16x8, OLED_COLOR_NORMAL);
-
-            sprintf(buf, "Z:%.2f", mpu6050_data.Az);
-            OLED_PrintASCIIString(65, 48, buf, &afont16x8, OLED_COLOR_NORMAL);
-        }
+        OLED_PrintASCIIString(65, 48, "  ", &afont16x8, OLED_COLOR_NORMAL);
 
         OLED_ShowFrame();
 
-        osDelay(5);
+        osDelay(20);  /* 50Hz */
     }
 }
 
@@ -548,7 +485,7 @@ void StartOLEDTask(void *argument)
  * MPU6050Task - 六轴传感器读取 (200Hz, 5ms周期)
  *   通过I2C1(PB6/PB7)读取MPU6050数据
  *   互补滤波融合 roll/pitch/yaw
- *   通过USART1打印到电脑
+ *   通过USART1打印到电脑 (500ms间隔)
  *============================================================================*/
 void StartMPU6050Task(void *argument)
 {
@@ -558,10 +495,24 @@ void StartMPU6050Task(void *argument)
     /* 初始化MPU6050 */
     MPU6050_Init();
 
+    uint32_t last_print_time = 0;
+
     for (;;)
     {
         /* 读取并融合数据 (200Hz) */
         MPU6050_Read_Result();
+
+        /* 每500ms打印一次MPU6050数据 */
+        uint32_t current_time = osKernelGetTickCount();
+        if (current_time - last_print_time >= 500)
+        {
+            last_print_time = current_time;
+
+            /* 打印欧拉角和加速度 */
+            UART_Printf("R:%.1f P:%.1f Y:%.1f Ax:%.2f Ay:%.2f Az:%.2f\r\n",
+                        mpu6050_data.roll, mpu6050_data.pitch, mpu6050_data.yaw,
+                        mpu6050_data.Ax, mpu6050_data.Ay, mpu6050_data.Az);
+        }
 
         osDelay(5);  /* 200Hz */
     }
@@ -633,12 +584,6 @@ void StartKeyTask(void *argument)
             else if (event == KEY_EVENT_LONG_PRESS)
             {
                 // 删除输出
-
-                /* KEY_1长按: 翻页 */
-                if (i == KEY_1)
-                {
-                    oled_page = (oled_page + 1) % 3;  /* 3页循环: 电机→PID→MPU6050 */
-                }
             }
         }
 
